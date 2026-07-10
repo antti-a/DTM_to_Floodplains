@@ -1,0 +1,24 @@
+# Conda environment for the whole pipeline:
+#   conda env create -f environment.yml
+#   conda activate water
+#
+# Notes:
+# * gdal brings the GDAL CLI tools (gdalbuildvrt) stages 1-2 shell out to.
+# * whitebox downloads the WhiteboxTools binary on first use - run stage 2
+#   once on a node with internet access (or pre-download the binary) before
+#   submitting offline batch jobs.
+name: water
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy
+  - rasterio
+  - gdal
+  - pyproj
+  - pysheds
+  - pyflwdir
+  - numba
+  - whitebox
+  - requests
+  - owslib

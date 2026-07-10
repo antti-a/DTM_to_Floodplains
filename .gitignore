@@ -1,0 +1,20 @@
+# Data: inputs, caches and every stage's outputs (GBs of rasters).
+# The pipeline recreates data/* from the DEM tiles you drop into
+# data/00_source_dems/.
+data/
+
+# Personal QGIS visualization project (not needed to run the pipeline)
+QGIS/
+
+# Python
+__pycache__/
+*.pyc
+
+# Interrupted-run temp files (03_flow_router.py writes *.part.* and swaps
+# them in on success)
+*.part.*
+
+# Editors / IDEs
+.spyproject/
+.vscode/
+.idea/
