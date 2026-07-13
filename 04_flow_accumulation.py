@@ -5,9 +5,9 @@ Created on Tue Jul 7 2026
 @author: Antti Ahokas
 Written with Claude Code (Anthropic).
 
-Pipeline stage 5, optional (see README.md):
+Pipeline stage 4, required by stages 5-6 (see README.md):
     reads   data/03_flows/flow_direction_*.tif   (03_flow_router.py output)
-    writes  data/05_accumulation/flow_accumulation_<method>.tif
+    writes  data/04_accumulation/flow_accumulation_<method>.tif
 
 Reads any of the flow-direction rasters in the input folder and computes the
 corresponding flow-accumulation raster into the output folder.
@@ -18,7 +18,7 @@ Every supported flow-direction format is first converted to a common
 representation: for each cell, the *fraction* of its outflow sent to each of
 its 8 neighbours (band order N, NE, E, SE, S, SW, W, NW):
 
-* **D8** (O'Callaghan & Mark, 1984): the single coded receiver
+* **D8** (O'Callaghan and Mark, 1984): the single coded receiver
   (64=N 128=NE 1=E 2=SE 4=S 8=SW 16=W 32=NW) gets fraction 1.0.
   Flats (-1) and pits (-2) have no outflow and act as sinks.
 * **MFD** (Quinn et al., 1991): the 8 input bands *are* the fractions.
@@ -27,7 +27,7 @@ its 8 neighbours (band order N, NE, E, SE, S, SW, W, NW):
   neighbours: with s = theta / (pi/4), the fractions are (1 - frac(s)) to
   direction floor(s) and frac(s) to direction floor(s)+1 (angle order
   E, NE, N, NW, W, SW, S, SE). Flats (-1) and pits (-2) are sinks.
-* **MD-infinity** (Seibert & McGlynn, 2007): the 8 input bands *are* the
+* **MD-infinity** (Seibert and McGlynn, 2007): the 8 input bands *are* the
   fractions.
 
 Accumulation itself is the classic upstream-area recurrence
@@ -41,7 +41,7 @@ and left with partial accumulation.
 
 Output
 ------
-``outputs/flow_accumulation_<method>.tif`` - float32, deflate-compressed
+``data/04_accumulation/flow_accumulation_<method>.tif`` - float32, deflate-compressed
 GeoTIFF. Values are the upslope contributing area **including the cell
 itself**, either in square metres (default) or in cell counts (``--units
 cells``). NoData is NaN.
@@ -55,30 +55,30 @@ Spatial reference
 
 Credits
 -------
-* Source data: flow-direction rasters in ``inputs/``, derived from a 2 m
-  digital elevation model in EPSG:3067 / N2000 - presumed to be the
+* Source data: flow-direction rasters in ``data/03_flows``, derived from a
+  2 m digital elevation model in EPSG:3067 / N2000 - presumed to be the
   National Land Survey of Finland (Maanmittauslaitos) 2 m elevation model
   (KM2), licensed CC BY 4.0. Edit ``SOURCE_DATA_CREDIT`` below if the
   provenance differs.
 * Flow-direction algorithm authors:
-  O'Callaghan & Mark (1984) [D8]; Quinn, Beven, Chevallier & Planchon
-  (1991) [MFD]; Tarboton (1997) [D-infinity]; Seibert & McGlynn (2007)
+  O'Callaghan and Mark (1984) [D8]; Quinn et al. (1991) [MFD];
+  Tarboton (1997) [D-infinity]; Seibert and McGlynn (2007)
   [MD-infinity]. Full references in ``METHODS`` below.
 * Accumulation strategy: Mark (1988) upstream-area recurrence; Kahn (1962)
   topological ordering.
 * Tools that enabled this work: Python, NumPy (Harris et al., 2020),
-  Numba (Lam, Pitrou & Seibert, 2015), rasterio (Gillies et al.) on
+  Numba (Lam, Pitrou and Seibert, 2015), rasterio (Gillies et al.) on
   GDAL (GDAL/OGR contributors, OSGeo).
 
 Usage
 -----
-    python 05_flow_accumulation.py                      # all rasters in inputs/
-    python 05_flow_accumulation.py inputs/flow_direction_d8.tif [more ...]
-    python 05_flow_accumulation.py --units cells        # counts instead of m2
+    python 04_flow_accumulation.py                      # all rasters in data/03_flows
+    python 04_flow_accumulation.py data/03_flows/flow_direction_d8.tif [more ...]
+    python 04_flow_accumulation.py --units cells        # counts instead of m2
 
 Run inside the ``water`` conda environment:
     conda activate water
-    python 05_flow_accumulation.py
+    python 04_flow_accumulation.py
 """
 
 from __future__ import annotations
@@ -118,14 +118,14 @@ SOURCE_DATA_CREDIT = (
 )
 
 TOOL_CREDITS = (
-    "Python, NumPy (Harris et al. 2020, doi:10.1038/s41586-020-2649-2), "
-    "Numba (Lam, Pitrou & Seibert 2015, doi:10.1145/2833157.2833162), "
+    "Python, NumPy (Harris et al., 2020, doi:10.1038/s41586-020-2649-2), "
+    "Numba (Lam, Pitrou and Seibert, 2015, doi:10.1145/2833157.2833162), "
     "rasterio (Gillies et al.), GDAL (GDAL/OGR contributors, OSGeo)."
 )
 
 ACCUMULATION_METHOD = (
     "Upslope contributing-area recurrence A(c) = area(c) + "
-    "sum(f(d->c) * A(d)) over donor cells d (Mark 1988), evaluated in "
+    "sum(f(d->c) * A(d)) over donor cells d (Mark, 1988), evaluated in "
     "topological order with Kahn's (1962) queue algorithm; single O(n) pass "
     "over the weighted 8-neighbour flow graph. Flow to NoData or off-grid "
     "is lost from the domain; flats and pits act as sinks."
@@ -143,31 +143,31 @@ METHODS = {
     "d8": Method(
         "d8",
         "D8 (single flow direction)",
-        "O'Callaghan, J.F. & Mark, D.M. (1984). The extraction of drainage "
-        "networks from digital elevation data. Computer Vision, Graphics, "
-        "and Image Processing 28(3), 323-344.",
+        "O'Callaghan, J.F. and Mark, D.M. (1984) 'The extraction of drainage "
+        "networks from digital elevation data', Computer Vision, Graphics, "
+        "and Image Processing, 28(3), pp. 323-344.",
     ),
     "mfd": Method(
         "mfd",
         "MFD (multiple flow direction)",
-        "Quinn, P., Beven, K., Chevallier, P. & Planchon, O. (1991). The "
+        "Quinn, P., Beven, K., Chevallier, P. and Planchon, O. (1991) 'The "
         "prediction of hillslope flow paths for distributed hydrological "
-        "modelling using digital terrain models. Hydrological Processes "
-        "5(1), 59-79.",
+        "modelling using digital terrain models', Hydrological Processes, "
+        "5(1), pp. 59-79.",
     ),
     "dinf": Method(
         "dinf",
         "D-infinity (single-direction angle, two-neighbour split)",
-        "Tarboton, D.G. (1997). A new method for the determination of flow "
-        "directions and upslope areas in grid digital elevation models. "
-        "Water Resources Research 33(2), 309-319.",
+        "Tarboton, D.G. (1997) 'A new method for the determination of flow "
+        "directions and upslope areas in grid digital elevation models', "
+        "Water Resources Research, 33(2), pp. 309-319.",
     ),
     "mdinf": Method(
         "mdinf",
         "MD-infinity (triangular multiple flow direction)",
-        "Seibert, J. & McGlynn, B.L. (2007). A new triangular multiple flow "
+        "Seibert, J. and McGlynn, B.L. (2007) 'A new triangular multiple flow "
         "direction algorithm for computing upslope areas from gridded "
-        "digital elevation models. Water Resources Research 43, W04501.",
+        "digital elevation models', Water Resources Research, 43(4), W04501.",
     ),
 }
 
@@ -370,7 +370,7 @@ def process(path: Path, out_dir: Path, units: str) -> Path:
             horizontal_crs="EPSG:3067 (ETRS89 / TM35FIN), units metres",
             vertical_datum="N2000, units metres (datum of the source DEM)",
             software_credits=TOOL_CREDITS,
-            generated_by="05_flow_accumulation.py",
+            generated_by="04_flow_accumulation.py",
         )
     print(f"  -> {out_path}  ({time.perf_counter() - t0:.1f} s)")
     return out_path
@@ -382,13 +382,14 @@ def main(argv=None) -> int:
                     "MD-infinity flow-direction rasters.")
     parser.add_argument(
         "rasters", nargs="*", type=Path,
-        help="flow-direction GeoTIFFs (default: all inputs/flow_direction_*.tif)")
+        help="flow-direction GeoTIFFs (default: all flow_direction_*.tif "
+             "in --inputs-dir)")
     parser.add_argument(
         "--inputs-dir", type=Path,
         default=Path(__file__).parent / "data" / "03_flows")
     parser.add_argument(
         "--outputs-dir", type=Path,
-        default=Path(__file__).parent / "data" / "05_accumulation")
+        default=Path(__file__).parent / "data" / "04_accumulation")
     parser.add_argument(
         "--units", choices=("m2", "cells"), default="m2",
         help="output as contributing area in m2 (default) or as cell counts")

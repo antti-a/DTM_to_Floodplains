@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-#
-#                        ~  F L O W   R O U T E R  ~
-#                         D8 . MFD . Dinf . MDinf
-#
-#        __        __                          ____......____
-#       /  \      /  \       __               /    \____/    \
-#   ~~~'    \    /    \     /  \        ~~~~~<      ....      >~~~~~>
-#            \__/      \___/    \______/      \____/....\____/
-#                                                   \__/
-#    meandering: one channel curving        anastomosing: a few separate
-#    bend after bend, flowing fastest       channels parting around large,
-#    on the outside of every turn           vegetated islands - stable
-#                                           enough to keep their shape
-#
 r"""
 03_flow_router.py - route flow over a DEM, map the streams (D8 by
 default; MFD, Dinf and MDinf on request).
@@ -25,8 +11,7 @@ Pipeline stage 3 (see README.md):
     reads   data/02_filled/*.tif        (02_fill_dem.py output)
     writes  data/03_flows/              (networks, summary CSV and the
                                          flow_direction_*.tif rasters that
-                                         04_delineate_catchments.py and
-                                         05_flow_accumulation.py read)
+                                         04_flow_accumulation.py reads)
 
 Takes one or more hydrologically conditioned DEM tiles (GeoTIFFs in
 data/02_filled), mosaics them into a single surface so streams can cross
@@ -134,7 +119,7 @@ METHOD
 
 THE FOUR ALGORITHMS (precise definitions, and credit where due)
 
-  D8 - "deterministic eight-neighbour", O'Callaghan & Mark (1984)
+  D8 - "deterministic eight-neighbour", O'Callaghan and Mark (1984)
     Each cell discharges ALL of its flow to exactly one of its eight
     neighbours (4 cardinal, 4 diagonal): the one with the steepest
     downward drop rate (z_cell - z_neighbour) / d, where d is the cell
@@ -143,9 +128,9 @@ THE FOUR ALGORITHMS (precise definitions, and credit where due)
     paths; contributing area grows in whole-cell steps. Convergent,
     simple and fast, but it cannot represent divergent flow and imprints
     45-degree artefacts on hillslopes.
-      Founder: John F. O'Callaghan & David M. Mark, "The extraction of
-      drainage networks from digital elevation data", Computer Vision,
-      Graphics, and Image Processing 28(3): 323-344, 1984.
+      Founder: O'Callaghan, J.F. and Mark, D.M. (1984) 'The extraction of
+      drainage networks from digital elevation data', Computer Vision,
+      Graphics, and Image Processing, 28(3), pp. 323-344.
 
   MFD - "multiple flow direction", Quinn et al. (1991)
     Flow from a cell is divided among ALL lower neighbours at once.
@@ -155,15 +140,16 @@ THE FOUR ALGORITHMS (precise definitions, and credit where due)
 
     of the cell's flow, where beta_i is the downward slope towards
     neighbour i and j runs over every downslope neighbour (pysheds uses
-    the original slope-proportional weighting; Freeman 1991 proposed
+    the original slope-proportional weighting; Freeman (1991) proposed
     p = 1.1). Dispersing flow over all descending directions represents
     divergent hillslope flow realistically at the cost of smearing flow
     paths, so accumulation is fractional rather than whole-cell.
-      Founder: Peter Quinn, Keith Beven, Pierre Chevallier & Olivier
-      Planchon, "The prediction of hillslope flow paths for distributed
-      hydrological modelling using digital terrain models", Hydrological
-      Processes 5(1): 59-79, 1991. (Exponent variant: T. G. Freeman,
-      Computers & Geosciences 17(3): 413-422, 1991.)
+      Founder: Quinn, P., Beven, K., Chevallier, P. and Planchon, O. (1991)
+      'The prediction of hillslope flow paths for distributed hydrological
+      modelling using digital terrain models', Hydrological Processes,
+      5(1), pp. 59-79. (Exponent variant: Freeman, T.G. (1991) 'Calculating
+      catchment area with divergent flow based on a regular grid',
+      Computers & Geosciences, 17(3), pp. 413-422.)
 
   Dinf - "D-infinity", Tarboton (1997)
     The flow direction is a CONTINUOUS angle in [0, 2*pi), taken as the
@@ -174,11 +160,11 @@ THE FOUR ALGORITHMS (precise definitions, and credit where due)
     aligned exactly with a neighbour sends everything to that single
     cell. This avoids D8's directional artefacts while keeping
     dispersion bounded (at most two receivers per cell).
-      Founder: David G. Tarboton, "A new method for the determination of
-      flow directions and upslope areas in grid digital elevation
-      models", Water Resources Research 33(2): 309-319, 1997.
+      Founder: Tarboton, D.G. (1997) 'A new method for the determination
+      of flow directions and upslope areas in grid digital elevation
+      models', Water Resources Research, 33(2), pp. 309-319.
 
-  MDinf - "multiple direction D-infinity", Seibert & McGlynn (2007)
+  MDinf - "multiple direction D-infinity", Seibert and McGlynn (2007)
     A marriage of Dinf and MFD. Like Tarboton's Dinf, the terrain around
     each cell is modelled as eight planar triangular facets, each with a
     continuous aspect angle; but instead of following only the single
@@ -189,10 +175,10 @@ THE FOUR ALGORITHMS (precise definitions, and credit where due)
     angle, exactly as in Dinf. The result keeps Dinf's sub-grid angular
     precision while representing divergent flow like MFD, without either
     method's blind spot.
-      Founder: Jan Seibert & Brian L. McGlynn, "A new triangular multiple
-      flow direction algorithm for computing upslope areas from gridded
-      digital elevation models", Water Resources Research 43(4): W04501,
-      2007.
+      Founder: Seibert, J. and McGlynn, B.L. (2007) 'A new triangular
+      multiple flow direction algorithm for computing upslope areas from
+      gridded digital elevation models', Water Resources Research, 43(4),
+      W04501.
 """
 
 import argparse
@@ -216,7 +202,7 @@ from pysheds.grid import Grid
 DEFAULT_MIN_AREA_KM2 = 1
 
 # Which algorithms run when --fdir is not given. D8 alone is the default:
-# it is the format the downstream stages (04, 05, 06, 07) consume. Each
+# it is the format the downstream stages (04, 05, 06) consume. Each
 # selected algorithm gets its network GeoJSON, its summary-CSV row and its
 # flow-direction raster (flow_direction_*.tif). The formats differ:
 # D8 = one band of integer direction codes, Dinf = one band of flow angle
@@ -231,7 +217,7 @@ ALGORITHMS = {
     "d8": {
         "title": "D8",
         "routing": "d8",
-        "founder": "O'Callaghan & Mark (1984)",
+        "founder": "O'Callaghan and Mark (1984)",
         "one_liner": "all flow to the single steepest-descent neighbour",
     },
     "mfd": {
@@ -249,20 +235,10 @@ ALGORITHMS = {
     "mdinf": {
         "title": "MDinf",
         "routing": "mdinf",  # runs in WhiteboxTools, not pysheds
-        "founder": "Seibert & McGlynn (2007)",
+        "founder": "Seibert and McGlynn (2007)",
         "one_liner": "flow dispersed over all downslope triangular facets, Dinf-style",
     },
 }
-
-
-def print_banner():
-    """Print the stream pixel art from the top of this very file."""
-    try:
-        lines = Path(__file__).read_text(encoding="utf-8").splitlines()[1:15]
-        print("\n".join(line.lstrip("#") for line in lines))
-    except OSError:
-        print("FLOW ROUTER")
-    print()
 
 
 def find_dems(dem_args, script_dir):
@@ -427,7 +403,7 @@ def mdinf_accumulation(conditioned_tif, work_dir):
     """MDinf contributing area (in cells) via WhiteboxTools.
 
     pysheds has no MDinf, so the conditioned surface is handed to
-    WhiteboxTools' MDInfFlowAccumulation (Seibert & McGlynn 2007) and the
+    WhiteboxTools' MDInfFlowAccumulation (Seibert and McGlynn, 2007) and the
     accumulation grid read back; both tools then see the same elevations.
     Nodata cells come back as 0 so they can never reach the threshold.
     """
@@ -703,7 +679,6 @@ def main(argv=None):
         print(__doc__)
         return 0
 
-    print_banner()
     started = time.perf_counter()
     script_dir = Path(__file__).resolve().parent
 

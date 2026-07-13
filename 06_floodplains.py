@@ -5,11 +5,11 @@ Created on Wed Jul 8 2026
 @author: Antti Ahokas
 Written with Claude Code (Anthropic).
 
-Pipeline stage 7, optional (see README.md):
+Pipeline stage 6, optional (see README.md):
     reads   data/02_filled/*.tif                            (02_fill_dem.py)
             data/03_flows/flow_direction_d8.tif             (03_flow_router.py)
-            data/05_accumulation/flow_accumulation_d8.tif   (05_flow_accumulation.py)
-    writes  data/07_floodplains/floodplains.tif
+            data/04_accumulation/flow_accumulation_d8.tif   (04_flow_accumulation.py)
+    writes  data/06_floodplains/floodplains.tif
 
 GFPLAIN (Nardi et al., 2019) delineates the geomorphic floodplain from
 terrain alone: every stream cell carries a flood level ``h = a * A**b``
@@ -17,7 +17,7 @@ terrain alone: every stream cell carries a flood level ``h = a * A**b``
 floodplain if it rises no more than ``h`` above the stream cell it drains
 to. Both ``a`` and ``b`` are adjustable, to be calibrated against
 observed/modelled flood extents - the literature exponent b ~ 0.30 (Nardi
-et al. 2019) is usually fixed first, then ``a`` fitted.
+et al., 2019) is usually fixed first, then ``a`` fitted.
 
 This stage recomputes nothing the pipeline already produced - the filled
 DEM, the D8 flow directions and the D8 flow accumulation are read as-is;
@@ -31,7 +31,7 @@ How it works
 2. ``flow_direction_d8.tif`` is remapped to pyflwdir's uint8 convention
    (identical ESRI direction codes; -1 flat / -2 pit -> 0 = pit,
    0 nodata -> 247) and loaded with ``pyflwdir.from_array(ftype="d8")``.
-3. The stage-5 D8 flow accumulation, converted to km2, gives the upstream
+3. The stage-4 D8 flow accumulation, converted to km2, gives the upstream
    area A: stream cells (A >= ``upa-min``) are floodplain by definition and
    carry ``h = a * A**b``; walking from down- to upstream, a hillslope cell
    joins the floodplain of the stream cell it drains to if its elevation
@@ -44,7 +44,7 @@ extended with the explicit coefficient ``a`` (pyflwdir's built-in is the
 
 Output
 ------
-``data/07_floodplains/floodplains.tif`` - int8, deflate-compressed GeoTIFF:
+``data/06_floodplains/floodplains.tif`` - int8, deflate-compressed GeoTIFF:
 1 = floodplain, 0 = upland, -1 = nodata.
 
 Spatial reference
@@ -62,14 +62,14 @@ Credits
 * Concept: Nardi et al. (2019) GFPLAIN. Full reference in
   ``GFPLAIN_CITATION`` below.
 * Tools that enabled this work: Python, NumPy (Harris et al., 2020),
-  Numba (Lam, Pitrou & Seibert, 2015), pyflwdir (Eilander et al., 2021),
+  Numba (Lam, Pitrou and Seibert, 2015), pyflwdir (Eilander et al., 2021),
   rasterio (Gillies et al.) on GDAL (GDAL/OGR contributors, OSGeo).
 
 Usage (inside the ``water`` conda environment, ``conda activate water``)
 -----
-    python 07_floodplains.py              # defaults from USER SETTINGS below
-    python 07_floodplains.py --a 0.8      # recalibrated coefficient
-    python 07_floodplains.py --a 1.0 --b 0.35 --upa-min 0.5
+    python 06_floodplains.py              # defaults from USER SETTINGS below
+    python 06_floodplains.py --a 0.8      # recalibrated coefficient
+    python 06_floodplains.py --a 1.0 --b 0.35 --upa-min 0.5
 """
 
 from __future__ import annotations
@@ -80,14 +80,14 @@ from __future__ import annotations
 # ===========================================================================
 
 INPUTS_DIR = "data/02_filled"       # filled DEM tiles; relative paths are
-OUTPUTS_DIR = "data/07_floodplains" # resolved next to this script
+OUTPUTS_DIR = "data/06_floodplains" # resolved next to this script
 DEM_FILES = None        # None = mosaic all *.tif in INPUTS_DIR, or a list,
                         # e.g. ["filled_carved_L4142E.tif"]
 
 D8_RASTER = "data/03_flows/flow_direction_d8.tif"
                         # D8 flow directions (03_flow_router.py output)
-UPAREA_RASTER = "data/05_accumulation/flow_accumulation_d8.tif"
-                        # D8 flow accumulation (05_flow_accumulation.py
+UPAREA_RASTER = "data/04_accumulation/flow_accumulation_d8.tif"
+                        # D8 flow accumulation (04_flow_accumulation.py
                         # output); its m2/cells units tag is honoured
 
 UPA_MIN = 0.2           # km2; stream-initiation threshold - cells with at
@@ -95,7 +95,7 @@ UPA_MIN = 0.2           # km2; stream-initiation threshold - cells with at
 
 # GFPLAIN power law h = a * A**b (h in m, A in km2): calibrate `a` (and, if
 # needed, `b`) against observed/modelled flood extents; the literature value
-# b ~ 0.30 (Nardi et al. 2019) is fixed first, then `a` fitted.
+# b ~ 0.30 (Nardi et al., 2019) is fixed first, then `a` fitted.
 GFPLAIN_A = 0.63        # coefficient a [-]
 FLOODPLAIN_B = 0.3      # exponent b [-]
 
@@ -133,16 +133,16 @@ SOURCE_DATA_CREDIT = (
 )
 
 TOOL_CREDITS = (
-    "Python, NumPy (Harris et al. 2020, doi:10.1038/s41586-020-2649-2), "
-    "Numba (Lam, Pitrou & Seibert 2015, doi:10.1145/2833157.2833162), "
-    "pyflwdir (Eilander et al. 2021, doi:10.5194/gmd-14-5045-2021), "
+    "Python, NumPy (Harris et al., 2020, doi:10.1038/s41586-020-2649-2), "
+    "Numba (Lam, Pitrou and Seibert, 2015, doi:10.1145/2833157.2833162), "
+    "pyflwdir (Eilander et al., 2021, doi:10.5194/hess-25-5287-2021), "
     "rasterio (Gillies et al.), GDAL (GDAL/OGR contributors, OSGeo)."
 )
 
 GFPLAIN_CITATION = (
-    "Nardi, F., Annis, A., Di Baldassarre, G., Vivoni, E.R. & Grimaldi, S. "
-    "(2019). GFPLAIN250m, a global high-resolution dataset of Earth's "
-    "floodplains. Scientific Data 6, 180309 (doi:10.1038/sdata.2018.309)."
+    "Nardi, F., Annis, A., Di Baldassarre, G., Vivoni, E.R. and Grimaldi, S. "
+    "(2019) 'GFPLAIN250m, a global high-resolution dataset of Earth's "
+    "floodplains', Scientific Data, 6, 180309, doi:10.1038/sdata.2018.309."
 )
 
 
@@ -266,16 +266,16 @@ def build_flwdir(d8u8, transform):
 
 
 def load_uparea(uparea_path, transform, shape, crs):
-    """Read the stage-5 accumulation raster; return upstream area in km2.
+    """Read the stage-4 accumulation raster; return upstream area in km2.
 
-    The units tag written by 05_flow_accumulation.py decides the conversion
+    The units tag written by 04_flow_accumulation.py decides the conversion
     (m2 or cell counts); NaN (nodata) becomes 0, which can never reach the
     stream threshold.
     """
     uparea_path = Path(uparea_path)
     if not uparea_path.is_file():
         sys.exit(f"Flow-accumulation raster not found: {uparea_path}. "
-                 f"Run 05_flow_accumulation.py first.")
+                 f"Run 04_flow_accumulation.py first.")
     with rasterio.open(uparea_path) as src:
         _check_grid("the accumulation raster", uparea_path, src,
                     transform, shape, crs)
@@ -288,7 +288,7 @@ def load_uparea(uparea_path, transform, shape, crs):
     else:
         sys.exit(f"{uparea_path}: cannot tell m2 from cell counts - the "
                  f"'units' tag is {units!r}; expected a "
-                 f"05_flow_accumulation.py output")
+                 f"04_flow_accumulation.py output")
     uparea = np.nan_to_num(acc, nan=0.0).astype(np.float32)
     uparea *= np.float32(factor)
     del acc
@@ -303,7 +303,7 @@ def load_uparea(uparea_path, transform, shape, crs):
 def _gfplain_kernel(idxs_ds, seq, elevtn, uparea, upa_min, a, b):
     """GFPLAIN floodplain flag per cell: 1 floodplain, 0 upland, -1 nodata.
 
-    Adapted from :func:`pyflwdir.dem.floodplains` (Nardi et al. 2019)
+    Adapted from :func:`pyflwdir.dem.floodplains` (Nardi et al., 2019)
     extended with the coefficient ``a``: a stream cell (``uparea >= upa_min``)
     carries the flood level ``h = a * A**b``; a non-stream cell belongs to the
     floodplain if it rises no more than ``h`` above the stream cell it drains
@@ -398,15 +398,15 @@ def main(argv=None) -> int:
     ap.add_argument("--inputs-dir", type=Path,
                     default=here / "data" / "02_filled")
     ap.add_argument("--outputs-dir", type=Path,
-                    default=here / "data" / "07_floodplains")
+                    default=here / "data" / "06_floodplains")
     ap.add_argument("--d8", type=Path,
                     default=here / "data" / "03_flows" / "flow_direction_d8.tif",
                     help="D8 flow-direction raster (03_flow_router.py output)")
     ap.add_argument("--uparea", type=Path,
-                    default=(here / "data" / "05_accumulation"
+                    default=(here / "data" / "04_accumulation"
                              / "flow_accumulation_d8.tif"),
                     help="D8 flow-accumulation raster "
-                         "(05_flow_accumulation.py output)")
+                         "(04_flow_accumulation.py output)")
     ap.add_argument("--upa-min", type=float, default=0.2, metavar="KM2",
                     help="stream-initiation threshold: cells with at least "
                          "this upstream area are stream cells (default 0.2)")
@@ -415,7 +415,7 @@ def main(argv=None) -> int:
                          "calibrate against flood hazard maps)")
     ap.add_argument("--b", type=float, default=0.3,
                     help="GFPLAIN exponent b in h = a*A**b (default 0.3, "
-                         "Nardi et al. 2019)")
+                         "after Nardi et al., 2019)")
     if argv is None and len(sys.argv) <= 1:
         argv = settings_to_argv()  # no CLI arguments: use the USER SETTINGS
         print("running with the USER SETTINGS from the top of the script")
@@ -470,7 +470,7 @@ def main(argv=None) -> int:
             horizontal_crs="EPSG:3067 (ETRS89 / TM35FIN), units metres",
             vertical_datum="N2000, units metres (datum of the source DEM)",
             software_credits=TOOL_CREDITS,
-            generated_by="07_floodplains.py",
+            generated_by="06_floodplains.py",
         ),
     )
 

@@ -14,28 +14,22 @@ in the right order and stops at the first failure.
     carve         01_carve_dem.py              data/00_source_dems  data/01_carved
     fill          02_fill_dem.py               data/01_carved       data/02_filled
     route         03_flow_router.py            data/02_filled       data/03_flows
-    catchments    04_delineate_catchments.py   data/03_flows        data/04_catchments
-    accumulation  05_flow_accumulation.py      data/03_flows        data/05_accumulation
-    hand          06_hand.py                   data/02_filled +     data/06_hand
+    accumulation  04_flow_accumulation.py      data/03_flows        data/04_accumulation
+    hand          05_hand.py                   data/02_filled +     data/05_hand
                                                data/03_flows +
-                                               data/05_accumulation
-    floodplains   07_floodplains.py            (same as hand)       data/07_floodplains
+                                               data/04_accumulation
+    floodplains   06_floodplains.py            (same as hand)       data/06_floodplains
 
 USAGE (inside the ``water`` conda environment)
     python 00_run_pipeline.py                     # carve -> fill -> route
-                                               #   -> catchments + accumulation
-                                               #   -> hand -> floodplains
+                                               #   -> accumulation -> hand
+                                               #   -> floodplains
     python 00_run_pipeline.py --from route        # resume after an earlier run
     python 00_run_pipeline.py --only fill route   # just these stages
-    python 00_run_pipeline.py --skip catchments   # everything else
-    python 00_run_pipeline.py --area 0.5          # stream threshold, km2 (route
-                                               #   and catchments together;
+    python 00_run_pipeline.py --skip hand         # everything else
+    python 00_run_pipeline.py --area 0.5          # stream threshold, km2 (route;
                                                #   hand/floodplains have their
                                                #   own --upa-min)
-
-Catchment delineation defaults to method 2 (confluence criterion) because it
-is the only method that needs no outlet coordinates; run
-04_delineate_catchments.py directly for methods 1 and 3.
 """
 
 from __future__ import annotations
@@ -49,8 +43,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 # Pipeline order.
-STAGES = ("carve", "fill", "route", "catchments", "accumulation",
-          "hand", "floodplains")
+STAGES = ("carve", "fill", "route", "accumulation", "hand", "floodplains")
 
 
 def stage_commands(args) -> dict[str, list[str]]:
@@ -59,14 +52,11 @@ def stage_commands(args) -> dict[str, list[str]]:
         "carve": [py, str(HERE / "01_carve_dem.py")],
         "fill": [py, str(HERE / "02_fill_dem.py")],
         "route": [py, str(HERE / "03_flow_router.py"), "--area", str(args.area)],
-        "catchments": [py, str(HERE / "04_delineate_catchments.py"),
-                       "--method", "2",
-                       "--stream-threshold", str(args.area)],
-        "accumulation": [py, str(HERE / "05_flow_accumulation.py")],
-        # hand/floodplains read stage 5's D8 accumulation; no flags passed,
+        "accumulation": [py, str(HERE / "04_flow_accumulation.py")],
+        # hand/floodplains read stage 4's D8 accumulation; no flags passed,
         # so they run on their USER SETTINGS defaults (--upa-min 0.2 etc.)
-        "hand": [py, str(HERE / "06_hand.py")],
-        "floodplains": [py, str(HERE / "07_floodplains.py")],
+        "hand": [py, str(HERE / "05_hand.py")],
+        "floodplains": [py, str(HERE / "06_floodplains.py")],
     }
 
 
@@ -82,8 +72,8 @@ def main(argv=None) -> int:
                     metavar="STAGE", help="leave these stages out")
     ap.add_argument("--area", type=float, default=1.0, metavar="KM2",
                     help="minimum contributing area defining a stream, used "
-                         "by both route and catchments (default 1.0); hand "
-                         "and floodplains have their own --upa-min instead")
+                         "by route (default 1.0); hand and floodplains have "
+                         "their own --upa-min instead")
     args = ap.parse_args(argv)
 
     if args.only:

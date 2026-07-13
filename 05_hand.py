@@ -5,11 +5,11 @@ Created on Wed Jul 8 2026
 @author: Antti Ahokas
 Written with Claude Code (Anthropic).
 
-Pipeline stage 6, optional (see README.md):
+Pipeline stage 5, optional (see README.md):
     reads   data/02_filled/*.tif                            (02_fill_dem.py)
             data/03_flows/flow_direction_d8.tif             (03_flow_router.py)
-            data/05_accumulation/flow_accumulation_d8.tif   (05_flow_accumulation.py)
-    writes  data/06_hand/hand.tif
+            data/04_accumulation/flow_accumulation_d8.tif   (04_flow_accumulation.py)
+    writes  data/05_hand/hand.tif
 
 HAND (Nobre et al., 2016) is the vertical distance between a cell and the
 stream cell it drains to along the D8 flow path: the local flood-relevant
@@ -26,7 +26,7 @@ How it works
 2. ``flow_direction_d8.tif`` is remapped to pyflwdir's uint8 convention
    (identical ESRI direction codes; -1 flat / -2 pit -> 0 = pit,
    0 nodata -> 247) and loaded with ``pyflwdir.from_array(ftype="d8")``.
-3. Stream (drain) cells are those whose stage-5 D8 flow accumulation,
+3. Stream (drain) cells are those whose stage-4 D8 flow accumulation,
    converted to km2, reaches the stream-initiation threshold ``upa-min``.
 4. A Numba kernel walks the flow graph from down- to upstream: a drain cell
    gets HAND = 0, every other cell gets its downstream neighbour's HAND plus
@@ -42,7 +42,7 @@ instead.
 
 Output
 ------
-``data/06_hand/hand.tif`` - float32, deflate-compressed GeoTIFF. Values are
+``data/05_hand/hand.tif`` - float32, deflate-compressed GeoTIFF. Values are
 metres above the nearest drain cell along the D8 flow path; drain cells are
 0. NoData (-9999) marks cells outside the DEM and cells that drain to a
 pit/edge without meeting a stream.
@@ -60,17 +60,17 @@ Credits
   to be the National Land Survey of Finland (Maanmittauslaitos) 2 m
   elevation model (KM2), licensed CC BY 4.0. Edit ``SOURCE_DATA_CREDIT``
   below if the provenance differs.
-* Concept: Nobre et al. (2016), HEND/HAND terrain descriptor. Full
+* Concept: Nobre et al. (2016), the HAND terrain descriptor. Full
   reference in ``HAND_CITATION`` below.
 * Tools that enabled this work: Python, NumPy (Harris et al., 2020),
-  Numba (Lam, Pitrou & Seibert, 2015), pyflwdir (Eilander et al., 2021),
+  Numba (Lam, Pitrou and Seibert, 2015), pyflwdir (Eilander et al., 2021),
   rasterio (Gillies et al.) on GDAL (GDAL/OGR contributors, OSGeo).
 
 Usage (inside the ``water`` conda environment, ``conda activate water``)
 -----
-    python 06_hand.py                     # defaults from USER SETTINGS below
-    python 06_hand.py --upa-min 0.5       # coarser stream network
-    python 06_hand.py --d8 other/fdir.tif --uparea other/acc.tif
+    python 05_hand.py                     # defaults from USER SETTINGS below
+    python 05_hand.py --upa-min 0.5       # coarser stream network
+    python 05_hand.py --d8 other/fdir.tif --uparea other/acc.tif
 """
 
 from __future__ import annotations
@@ -81,14 +81,14 @@ from __future__ import annotations
 # ===========================================================================
 
 INPUTS_DIR = "data/02_filled"       # filled DEM tiles; relative paths are
-OUTPUTS_DIR = "data/06_hand"        # resolved next to this script
+OUTPUTS_DIR = "data/05_hand"        # resolved next to this script
 DEM_FILES = None        # None = mosaic all *.tif in INPUTS_DIR, or a list,
                         # e.g. ["filled_carved_L4142E.tif"]
 
 D8_RASTER = "data/03_flows/flow_direction_d8.tif"
                         # D8 flow directions (03_flow_router.py output)
-UPAREA_RASTER = "data/05_accumulation/flow_accumulation_d8.tif"
-                        # D8 flow accumulation (05_flow_accumulation.py
+UPAREA_RASTER = "data/04_accumulation/flow_accumulation_d8.tif"
+                        # D8 flow accumulation (04_flow_accumulation.py
                         # output); its m2/cells units tag is honoured
 
 UPA_MIN = 0.2           # km2; stream-initiation threshold - cells with at
@@ -126,17 +126,18 @@ SOURCE_DATA_CREDIT = (
 )
 
 TOOL_CREDITS = (
-    "Python, NumPy (Harris et al. 2020, doi:10.1038/s41586-020-2649-2), "
-    "Numba (Lam, Pitrou & Seibert 2015, doi:10.1145/2833157.2833162), "
-    "pyflwdir (Eilander et al. 2021, doi:10.5194/gmd-14-5045-2021), "
+    "Python, NumPy (Harris et al., 2020, doi:10.1038/s41586-020-2649-2), "
+    "Numba (Lam, Pitrou and Seibert, 2015, doi:10.1145/2833157.2833162), "
+    "pyflwdir (Eilander et al., 2021, doi:10.5194/hess-25-5287-2021), "
     "rasterio (Gillies et al.), GDAL (GDAL/OGR contributors, OSGeo)."
 )
 
 HAND_CITATION = (
-    "Nobre, A.D., Cuartas, L.A., Momo, M.R., Severo, D.L., Pinheiro, A. & "
-    "Nobre, C.A. (2016). HAND contour: a new proxy predictor of inundation "
-    "extent. Hydrological Processes 30(2), 320-333 (HAND originally: Rennó "
-    "et al. 2008, doi:10.1016/j.rse.2008.03.018)."
+    "Nobre, A.D., Cuartas, L.A., Momo, M.R., Severo, D.L., Pinheiro, A. and "
+    "Nobre, C.A. (2016) 'HAND contour: a new proxy predictor of inundation "
+    "extent', Hydrological Processes, 30(2), pp. 320-333, "
+    "doi:10.1002/hyp.10581 (HAND originally: Rennó et al., 2008, "
+    "doi:10.1016/j.rse.2008.03.018)."
 )
 
 HAND_DEVIATION = (
@@ -265,16 +266,16 @@ def build_flwdir(d8u8, transform):
 
 
 def load_uparea(uparea_path, transform, shape, crs):
-    """Read the stage-5 accumulation raster; return upstream area in km2.
+    """Read the stage-4 accumulation raster; return upstream area in km2.
 
-    The units tag written by 05_flow_accumulation.py decides the conversion
+    The units tag written by 04_flow_accumulation.py decides the conversion
     (m2 or cell counts); NaN (nodata) becomes 0, which can never reach the
     stream threshold.
     """
     uparea_path = Path(uparea_path)
     if not uparea_path.is_file():
         sys.exit(f"Flow-accumulation raster not found: {uparea_path}. "
-                 f"Run 05_flow_accumulation.py first.")
+                 f"Run 04_flow_accumulation.py first.")
     with rasterio.open(uparea_path) as src:
         _check_grid("the accumulation raster", uparea_path, src,
                     transform, shape, crs)
@@ -287,7 +288,7 @@ def load_uparea(uparea_path, transform, shape, crs):
     else:
         sys.exit(f"{uparea_path}: cannot tell m2 from cell counts - the "
                  f"'units' tag is {units!r}; expected a "
-                 f"05_flow_accumulation.py output")
+                 f"04_flow_accumulation.py output")
     uparea = np.nan_to_num(acc, nan=0.0).astype(np.float32)
     uparea *= np.float32(factor)
     del acc
@@ -303,7 +304,7 @@ def _hand_kernel(idxs_ds, seq, drain, elevtn):
     """Height above nearest drain, down- to upstream in one pass.
 
     Adapted from :func:`pyflwdir.dem.height_above_nearest_drain` (Nobre et
-    al. 2016). ``seq`` orders the valid cells from down- to upstream, so a
+    al., 2016). ``seq`` orders the valid cells from down- to upstream, so a
     cell's downstream HAND is always resolved before the cell itself. One
     deviation from pyflwdir: a cell only gets a value if it is a drain or
     its downstream cell already has one, so paths that end in a pit or at
@@ -386,15 +387,15 @@ def main(argv=None) -> int:
     ap.add_argument("--inputs-dir", type=Path,
                     default=here / "data" / "02_filled")
     ap.add_argument("--outputs-dir", type=Path,
-                    default=here / "data" / "06_hand")
+                    default=here / "data" / "05_hand")
     ap.add_argument("--d8", type=Path,
                     default=here / "data" / "03_flows" / "flow_direction_d8.tif",
                     help="D8 flow-direction raster (03_flow_router.py output)")
     ap.add_argument("--uparea", type=Path,
-                    default=(here / "data" / "05_accumulation"
+                    default=(here / "data" / "04_accumulation"
                              / "flow_accumulation_d8.tif"),
                     help="D8 flow-accumulation raster "
-                         "(05_flow_accumulation.py output)")
+                         "(04_flow_accumulation.py output)")
     ap.add_argument("--upa-min", type=float, default=0.2, metavar="KM2",
                     help="stream-initiation threshold: cells with at least "
                          "this upstream area are drains (default 0.2)")
@@ -452,7 +453,7 @@ def main(argv=None) -> int:
             horizontal_crs="EPSG:3067 (ETRS89 / TM35FIN), units metres",
             vertical_datum="N2000, units metres (datum of the source DEM)",
             software_credits=TOOL_CREDITS,
-            generated_by="06_hand.py",
+            generated_by="05_hand.py",
         ),
     )
 

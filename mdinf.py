@@ -22,7 +22,7 @@ WHY THIS MODULE EXISTS
     WhiteboxTools accumulation follows (our runs use no convergence
     threshold, so its D8 fallback branch never fires).
 
-THE ALGORITHM - MDinf, Seibert & McGlynn (2007)
+THE ALGORITHM - MDinf, Seibert and McGlynn (2007)
     The terrain around each cell is modelled as eight planar triangular
     facets between the cell centre and each pair of adjacent neighbours.
     Each facet has a continuous downslope aspect angle; when that angle
@@ -33,10 +33,10 @@ THE ALGORITHM - MDinf, Seibert & McGlynn (2007)
     facet's share is split linearly by angle between the two grid
     neighbours bracketing its aspect - so each facet feeds one or two
     cells, and the cell as a whole feeds up to eight.
-      Founder: Jan Seibert & Brian L. McGlynn, "A new triangular multiple
-      flow direction algorithm for computing upslope areas from gridded
-      digital elevation models", Water Resources Research 43(4): W04501,
-      2007.
+      Founder: Seibert, J. and McGlynn, B.L. (2007) 'A new triangular
+      multiple flow direction algorithm for computing upslope areas from
+      gridded digital elevation models', Water Resources Research, 43(4),
+      W04501.
 
 OUTPUT CONVENTION
     mdinf_flowdir() returns fractions as a (8, rows, cols) float64 array
