@@ -290,6 +290,40 @@ def validate_tiles(paths):
                       f"the mosaic keeps the later one there.")
 
 
+def collect_provenance(paths):
+    """Merge the tiles' provenance tags (stamped by stages 1-2).
+
+    ``dem_source_tiles`` becomes the sorted union across the tiles;
+    ``dem_carve`` / ``dem_fill`` are forwarded only when every tagged tile
+    agrees. Untagged (pre-convention) tiles only cost a note, never a
+    failure, so old intermediates keep working.
+    """
+    tile_tags = []
+    for path in paths:
+        with rasterio.open(path) as src:
+            tile_tags.append(src.tags())
+
+    merged = {}
+    sources = set()
+    for tags in tile_tags:
+        sources.update(
+            t for t in tags.get("dem_source_tiles", "").split(", ") if t
+        )
+    if sources:
+        merged["dem_source_tiles"] = ", ".join(sorted(sources))
+    else:
+        print("Note: the tiles carry no provenance tags (pre-convention "
+              "inputs); outputs will not name the source DEM tiles.")
+    for key in ("dem_carve", "dem_fill"):
+        values = {tags[key] for tags in tile_tags if key in tags}
+        if len(values) == 1:
+            merged[key] = values.pop()
+        elif len(values) > 1:
+            print(f"Note: the tiles disagree on the {key} tag "
+                  f"({', '.join(sorted(values))}); tag omitted.")
+    return merged
+
+
 def build_mosaic(paths, work_dir, nodata=-9999.0):
     """Merge the tiles into one GeoTIFF and return its path.
 
@@ -487,7 +521,8 @@ def swap_in(tmp, path):
         raise
 
 
-def write_fdir_raster(path, key, spec, fdir, crs, transform):
+def write_fdir_raster(path, key, spec, fdir, crs, transform,
+                      provenance=None):
     """Write one algorithm's flow-direction grid as a GeoTIFF.
 
     Each algorithm's notion of "direction" is its own, so the files differ:
@@ -528,11 +563,15 @@ def write_fdir_raster(path, key, spec, fdir, crs, transform):
         transform=transform, nodata=nodata, tiled=True, blockxsize=256,
         blockysize=256, compress="deflate", bigtiff="IF_SAFER",
     )
+    tags = dict(algorithm=spec["title"], founder=spec["founder"],
+                encoding=encoding, flow_routing_algorithm=key,
+                **(provenance or {}))
+    if key == "mdinf":
+        tags["flow_routing_exponent"] = f"{MDINF_EXPONENT:g}"
     tmp = path.with_name(path.stem + ".part.tif")
     with rasterio.open(tmp, "w", **profile) as dst:
         dst.write(bands)
-        dst.update_tags(algorithm=spec["title"], founder=spec["founder"],
-                        encoding=encoding)
+        dst.update_tags(**tags)
         for b, desc in enumerate(descriptions, start=1):
             dst.set_band_description(b, desc)
     return swap_in(tmp, path)
@@ -696,6 +735,7 @@ def main(argv=None):
     # -------------------------------------------- 2. DEM tiles in, mosaicked
     dem_paths = find_dems(args.dem, script_dir)
     validate_tiles(dem_paths)
+    provenance = collect_provenance(dem_paths)
     out_dir = Path(args.out) if args.out else script_dir / "data" / "03_flows"
     work_dir = out_dir / "_work"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -765,7 +805,8 @@ def main(argv=None):
         if fdir_grid is not None:
             written.append(
                 write_fdir_raster(out_dir / f"flow_direction_{key}.tif",
-                                  key, spec, fdir_grid, crs, transform)
+                                  key, spec, fdir_grid, crs, transform,
+                                  provenance)
             )
         segments, mask = build_network(grid, fdir_d8, accumulation,
                                        threshold_cells, sx, sy)

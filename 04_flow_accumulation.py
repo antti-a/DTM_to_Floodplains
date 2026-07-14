@@ -117,6 +117,13 @@ SOURCE_DATA_CREDIT = (
     "of Finland 2 m elevation model (KM2), CC BY 4.0."
 )
 
+# Used instead when the input forwards stage-1 provenance tags.
+SOURCE_DATA_CREDIT_KNOWN = (
+    "National Land Survey of Finland 2 m elevation model (KM2), CC BY 4.0, "
+    "carved with the SYKE 'Tierumpujen uomakorjaus' culvert correction "
+    "(CC BY 4.0); source tiles in the dem_source_tiles tag."
+)
+
 TOOL_CREDITS = (
     "Python, NumPy (Harris et al., 2020, doi:10.1038/s41586-020-2649-2), "
     "Numba (Lam, Pitrou and Seibert, 2015, doi:10.1145/2833157.2833162), "
@@ -300,6 +307,9 @@ CONVERTERS = {
 
 def detect_method(path: Path, tags: dict) -> Method:
     """Identify the flow-direction format from GeoTIFF tags or the filename."""
+    key = tags.get("flow_routing_algorithm", "").strip().lower()
+    if key in METHODS:
+        return METHODS[key]
     tag = tags.get("algorithm", "").lower().replace("-", "").replace("_", "")
     for key in ("mdinf", "dinf", "mfd", "d8"):  # longest match first
         if tag == key:
@@ -349,6 +359,13 @@ def process(path: Path, out_dir: Path, units: str) -> Path:
     print(f"  max accumulation: {np.nanmax(out):,.0f} "
           f"{'m2' if units == 'm2' else 'cells'}")
 
+    forwarded = {k: source_tags[k]
+                 for k in ("dem_source_tiles", "dem_carve", "dem_fill")
+                 if k in source_tags}
+    if "dem_source_tiles" not in forwarded:
+        print("  WARNING: input carries no provenance tags (pre-convention "
+              "raster); recording presumed source")
+
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"flow_accumulation_{method.key}.tif"
     profile.update(
@@ -361,16 +378,20 @@ def process(path: Path, out_dir: Path, units: str) -> Path:
         dst.update_tags(
             title=f"Flow accumulation ({method.name})",
             units=unit_label,
+            flow_routing_algorithm=method.key,
             flow_direction_algorithm=method.name,
             flow_direction_citation=method.citation,
             accumulation_method=ACCUMULATION_METHOD,
             source_flow_direction_raster=path.name,
             source_flow_direction_encoding=source_tags.get("encoding", ""),
-            source_data_credit=SOURCE_DATA_CREDIT,
+            source_data_credit=(SOURCE_DATA_CREDIT_KNOWN
+                                if "dem_source_tiles" in forwarded
+                                else SOURCE_DATA_CREDIT),
             horizontal_crs="EPSG:3067 (ETRS89 / TM35FIN), units metres",
             vertical_datum="N2000, units metres (datum of the source DEM)",
             software_credits=TOOL_CREDITS,
             generated_by="04_flow_accumulation.py",
+            **forwarded,
         )
     print(f"  -> {out_path}  ({time.perf_counter() - t0:.1f} s)")
     return out_path

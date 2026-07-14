@@ -160,6 +160,28 @@ Notes per stage:
   * `mfd`, `mdinf` — 8 float32 bands: fraction of flow to N, NE, E, SE, S,
     SW, W, NW; NaN nodata.
 
+### Provenance tags
+
+Every raster a stage writes carries machine-readable GeoTIFF dataset tags
+(read them with `gdalinfo` or `rasterio.open(...).tags()`), alongside the
+human-readable prose tags. Each key is stamped once at the stage where the
+value originates and forwarded **verbatim** by every later stage that
+consumes the file:
+
+| key | example | origin | meaning |
+|---|---|---|---|
+| `dem_source_tiles` | `L4142E.tif, L4142F.tif` | 1 | original source-DEM filenames (comma+space separated, sorted); mosaic stages record the union across tiles |
+| `dem_carve` | `syke_culvert_min` | 1 | culvert carving: cell-wise `min(DEM, SYKE Tierumpujen uomakorjaus)` |
+| `dem_fill` | `wbt_fill_depressions_fix_flats` | 2 | WBT `FillDepressions`, `fix_flats=True`, float64 |
+| `flow_routing_algorithm` | `d8` | 3 | routing algorithm key (`d8`/`mfd`/`dinf`/`mdinf`); stages 5–6 read it from their inputs instead of assuming D8 |
+| `stream_threshold_km2` | `0.2` | 5, 6 | `--upa-min`: min upstream area defining stream/drain cells — **not** stage 3's `--area`, which only shapes the vector network |
+| `gfplain_a`, `gfplain_b` | `0.63`, `0.3` | 6 | GFPLAIN parameters in `h = a * A**b` |
+
+When the merged tiles disagree on `dem_carve`/`dem_fill` the tag is omitted
+with a note. Pre-convention intermediates (rasters written before these tags
+existed) only trigger warnings: downstream stages then assume D8, skip the
+missing keys and fall back to the older "presumed source" credit wording.
+
 ### NaN vs 0 in the 8-band rasters (MFD vs MDinf)
 
 The two 8-band rasters (produced only when stage 3 runs with `--fdir`)

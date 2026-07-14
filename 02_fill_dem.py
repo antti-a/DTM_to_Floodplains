@@ -74,6 +74,19 @@ logger = logging.getLogger("fill_dem")
 NODATA = -9999.0             # KM2 convention; also stamped on the outputs
 KEEP_INTERMEDIATE = False    # keep outputs/_work/ after a successful run
 
+# Used when the input carries stage-1 provenance tags (dem_source_tiles).
+SOURCE_DATA_CREDIT = (
+    "National Land Survey of Finland 2 m elevation model (KM2), CC BY 4.0, "
+    "carved with the SYKE 'Tierumpujen uomakorjaus' culvert correction "
+    "(CC BY 4.0); source tiles in the dem_source_tiles tag."
+)
+# Fallback for pre-convention inputs without tags.
+SOURCE_DATA_CREDIT_PRESUMED = (
+    "2 m DEM in EPSG:3067 (ETRS89 / TM35FIN), vertical datum N2000; "
+    "presumed source: National Land Survey of Finland 2 m elevation model "
+    "(KM2), CC BY 4.0."
+)
+
 # --------------------------------------------------------------------------- #
 # Locations
 # --------------------------------------------------------------------------- #
@@ -274,6 +287,7 @@ def write_dem(
     nodata: float = NODATA,
     dtype: str = "float32",
     predictor: int | None = None,
+    tags: dict | None = None,
 ) -> Path:
     """Write a single-band GeoTIFF (tiled + compressed) in ``dtype``.
 
@@ -303,6 +317,8 @@ def write_dem(
     )
     with rasterio.open(path, "w", **profile) as dst:
         dst.write(array.astype(dtype), 1)
+        if tags:
+            dst.update_tags(**tags)
     logger.info("Wrote %s", path)
     return path
 
@@ -328,6 +344,7 @@ def crop_back(
         if src.nodata is not None and src.nodata != nodata:
             orig[orig == src.nodata] = nodata
         transform, crs, bounds = src.transform, src.crs, src.bounds
+        src_tags = src.tags()
 
     with rasterio.open(filled_tif) as src:
         window = from_bounds(*bounds, transform=src.transform)
@@ -355,9 +372,31 @@ def crop_back(
         100.0 * raised / max(1, valid.sum()), float(diff.max()) if diff.size else 0.0,
     )
 
+    forwarded = {k: src_tags[k] for k in ("dem_source_tiles", "dem_carve")
+                 if k in src_tags}
+    if "dem_source_tiles" not in forwarded:
+        logger.warning(
+            "%s: input carries no provenance tags (pre-convention carved "
+            "tile); recording presumed source", dem_path.name,
+        )
     return write_dem(
         Path(out_dir) / f"filled_{dem_path.stem}.tif",
         filled, transform, crs, nodata, dtype="float64",
+        tags=dict(
+            title="Hydrologically conditioned (depression-filled) DEM",
+            fill_method="WhiteboxTools FillDepressions, fix_flats=True, run "
+                        "on the virtual mosaic of all input tiles and "
+                        "cropped back to this tile's grid; float64 preserves "
+                        "the flat-fix gradients",
+            dem_fill="wbt_fill_depressions_fix_flats",
+            source_data_credit=(SOURCE_DATA_CREDIT
+                                if "dem_source_tiles" in forwarded
+                                else SOURCE_DATA_CREDIT_PRESUMED),
+            horizontal_crs="EPSG:3067 (ETRS89 / TM35FIN), units metres",
+            vertical_datum="N2000, units metres (datum of the source DEM)",
+            generated_by="02_fill_dem.py",
+            **forwarded,
+        ),
     )
 
 

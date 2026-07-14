@@ -74,6 +74,12 @@ WCS_TIMEOUT = 120              # per-tile WCS read timeout [s] (fail fast)
 WCS_RETRIES = 4                # per-tile download attempts on timeout
 CULVERT_TILE_KM = 10.0         # culvert tile size [km] (try 5 if WCS stalls)
 
+SOURCE_DATA_CREDIT = (
+    "National Land Survey of Finland 2 m elevation model (KM2), CC BY 4.0, "
+    "carved with the SYKE 'Tierumpujen uomakorjaus' culvert correction "
+    "(CC BY 4.0); source tiles in the dem_source_tiles tag."
+)
+
 # --------------------------------------------------------------------------- #
 # Locations
 # --------------------------------------------------------------------------- #
@@ -308,6 +314,7 @@ def write_dem(
     crs: rasterio.crs.CRS,
     nodata: float = NODATA,
     dtype: str = "float32",
+    tags: dict | None = None,
 ) -> Path:
     """Write a single-band GeoTIFF (tiled + compressed) in ``dtype``."""
     path = Path(path)
@@ -331,6 +338,8 @@ def write_dem(
     )
     with rasterio.open(path, "w", **profile) as dst:
         dst.write(array.astype(dtype), 1)
+        if tags:
+            dst.update_tags(**tags)
     logger.info("Wrote %s", path)
     return path
 
@@ -387,7 +396,19 @@ def carve_dem(
     carved = carved_minimum(dem, culvert, nodata)
     del culvert
     return write_dem(
-        Path(out_dir) / f"carved_{name}.tif", carved, transform, crs, nodata
+        Path(out_dir) / f"carved_{name}.tif", carved, transform, crs, nodata,
+        tags=dict(
+            title="Culvert-carved DEM",
+            carve_method="cell-wise min(DEM, SYKE 'Tierumpujen uomakorjaus' "
+                         "culvert correction) where the culvert layer has "
+                         "data; whole DEM, no depression filling",
+            dem_source_tiles=dem_path.name,
+            dem_carve="syke_culvert_min",
+            source_data_credit=SOURCE_DATA_CREDIT,
+            horizontal_crs="EPSG:3067 (ETRS89 / TM35FIN), units metres",
+            vertical_datum="N2000, units metres (datum of the source DEM)",
+            generated_by="01_carve_dem.py",
+        ),
     )
 
 
