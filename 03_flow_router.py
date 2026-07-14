@@ -45,18 +45,18 @@ descriptions and tags document their encoding:
   flow_direction_dinf.tif      one float32 band: flow angle in [0, 2*pi)
                                radians counter-clockwise from east
   flow_direction_mdinf.tif     eight float32 bands of flow fractions, like
-                               MFD - needs the companion module mdinf.py
+                               MFD - needs the companion modules mdinf.py
+                               and accumulation.py
 
     (in d8 and dinf, -1 marks a flat and -2 a pit)
 
-    flow_direction_mdinf.tif is special: MDinf runs in WhiteboxTools,
-    which computes its facet directions internally, returns only the
-    accumulation, and has no tool that exports them. The optional
-    companion module mdinf.py therefore recomputes the directions with
-    the same mathematics (ported from Jan Seibert & Marc Vis's own
-    implementation via WhiteboxTools' MIT-licensed source) - it is only
-    imported when the mdinf raster is requested, and if the file is not
-    next to this script the run prints a note and carries on.
+    flow_direction_mdinf.tif is special: pysheds does not implement
+    MDinf, so the directions come from the companion module mdinf.py
+    (the method's mathematics ported from Jan Seibert & Marc Vis's own
+    implementation via WhiteboxTools' MIT-licensed source) and the
+    accumulation from the shared kernel in accumulation.py. Both modules
+    are imported only when the mdinf method is requested; if either file
+    is not next to this script the run prints a note and skips MDinf.
 
 The tuning knobs are constants at the top of the script:
 
@@ -78,12 +78,13 @@ SHARING
     The script is a single file with no hard-coded paths: put it next to
     a "dem" folder holding one or more GeoTIFF tiles (same CRS, cell size
     and grid alignment) and run it with any Python >= 3.9 that has the
-    dependencies installed. One optional extra: share mdinf.py alongside
-    if the MDinf direction raster is wanted (everything else works
-    without it; it needs numba, which pysheds installs anyway).
+    dependencies installed. One optional extra: share mdinf.py and
+    accumulation.py alongside if the MDinf method is wanted (everything
+    else works without them; they need numba, which pysheds installs
+    anyway).
 
-        pip install pysheds whitebox rasterio pyproj numpy
-        (or conda -c conda-forge; whitebox fetches its own binary once)
+        pip install pysheds rasterio pyproj numpy
+        (or conda -c conda-forge)
 
     GeoJSON output is RFC 7946 compliant (coordinates in WGS84), so the
     files drop straight into QGIS, geojson.io, kepler.gl, Leaflet, ...
@@ -115,7 +116,8 @@ METHOD
     Routing is not conditioning, so none happens here; the script only
     verifies that the mosaic actually drains and stops with a pointer at
     the filling step if it does not. D8, MFD and Dinf run in pysheds;
-    MDinf runs in WhiteboxTools (pysheds does not implement it).
+    MDinf runs in the companion modules mdinf.py + accumulation.py
+    (pysheds does not implement it).
 
 THE FOUR ALGORITHMS (precise definitions, and credit where due)
 
@@ -207,8 +209,8 @@ DEFAULT_MIN_AREA_KM2 = 1
 # flow-direction raster (flow_direction_*.tif). The formats differ:
 # D8 = one band of integer direction codes, Dinf = one band of flow angle
 # in radians, MFD and MDinf = eight bands of flow fractions (N, NE, ... NW).
-# The MDinf raster needs the optional companion module mdinf.py next to
-# this script; without it, the run prints a note and skips the raster.
+# The MDinf method needs the companion modules mdinf.py and accumulation.py
+# next to this script; without them, the run prints a note and skips MDinf.
 DEFAULT_METHODS = ("d8",)
 
 MDINF_EXPONENT = 1.1  # facet-slope exponent p for MDinf (Freeman's value)
@@ -234,7 +236,7 @@ ALGORITHMS = {
     },
     "mdinf": {
         "title": "MDinf",
-        "routing": "mdinf",  # runs in WhiteboxTools, not pysheds
+        "routing": "mdinf",  # runs in mdinf.py + accumulation.py, not pysheds
         "founder": "Seibert and McGlynn (2007)",
         "one_liner": "flow dispersed over all downslope triangular facets, Dinf-style",
     },
@@ -327,12 +329,11 @@ def collect_provenance(paths):
 def build_mosaic(paths, work_dir, nodata=-9999.0):
     """Merge the tiles into one GeoTIFF and return its path.
 
-    Always materialized, even for a single tile: WhiteboxTools cannot read
-    VRTs and rejects the floating-point TIFF predictor the conditioning
-    pipeline writes, so a plain (predictor-free) copy is the common ground
-    that pysheds, WhiteboxTools and rasterio can all read. Written in
-    float64 so the conditioned tiles' sub-millimetre flat-fix gradients
-    survive the merge (float32 would collapse them back into ties).
+    Always materialized, even for a single tile: routing reads the whole
+    surface into memory anyway, and one plain copy normalizes nodata and
+    non-finite cells for everything downstream. Written in float64 so the
+    conditioned tiles' sub-millimetre flat-resolution gradients survive
+    the merge (float32 would collapse them back into ties).
     """
     work_dir.mkdir(parents=True, exist_ok=True)
     sources = [rasterio.open(p) for p in paths]
@@ -376,16 +377,6 @@ def line_length_m(coords, sx, sy):
     xs = np.array([p[0] for p in coords], dtype="float64")
     ys = np.array([p[1] for p in coords], dtype="float64")
     return float(np.hypot(np.diff(xs) * sx, np.diff(ys) * sy).sum())
-
-
-def get_wbt(work_dir):
-    """A quiet WhiteboxTools instance working in work_dir."""
-    import whitebox
-
-    wbt = whitebox.WhiteboxTools()
-    wbt.set_verbose_mode(False)
-    wbt.set_working_dir(str(work_dir))
-    return wbt
 
 
 def check_drainage(mosaic_path):
@@ -433,27 +424,28 @@ def check_drainage(mosaic_path):
           f"({stuck} outlet/tie cells)")
 
 
-def mdinf_accumulation(conditioned_tif, work_dir):
-    """MDinf contributing area (in cells) via WhiteboxTools.
+def mdinf_accumulation(fractions):
+    """MDinf contributing area (in cells) from the direction fractions.
 
-    pysheds has no MDinf, so the conditioned surface is handed to
-    WhiteboxTools' MDInfFlowAccumulation (Seibert and McGlynn, 2007) and the
-    accumulation grid read back; both tools then see the same elevations.
-    Nodata cells come back as 0 so they can never reach the threshold.
+    pysheds has no MDinf, so the fractions computed by mdinf.py are
+    accumulated with the shared Kahn kernel in accumulation.py - the
+    same code 04_flow_accumulation.py runs on the written raster, so the
+    network thresholded here and the accumulation raster written there
+    can never disagree. The NaN-band convention is converted exactly
+    like stage 4's reader: a cell is nodata only when all 8 bands are
+    NaN, and such cells accumulate 0 so they can never reach the
+    threshold.
     """
-    wbt = get_wbt(work_dir)
-    out = work_dir / "mdinf_accumulation.tif"
-    ret = wbt.md_inf_flow_accumulation(
-        str(conditioned_tif), str(out),
-        out_type="cells", exponent=MDINF_EXPONENT,
-    )
-    if ret != 0 or not out.exists():
-        raise RuntimeError(f"WhiteboxTools MDInfFlowAccumulation failed (exit {ret})")
-    with rasterio.open(out) as src:
-        acc = src.read(1).astype("float64")
-        if src.nodata is not None:
-            acc[acc == src.nodata] = 0.0
-    acc[~np.isfinite(acc)] = 0.0
+    from accumulation import DROW, DCOL, accumulate
+
+    frac = np.moveaxis(np.asarray(fractions), 0, -1).astype(np.float32)
+    valid = ~np.isnan(frac).all(axis=2)
+    np.nan_to_num(frac, copy=False, nan=0.0)
+    np.clip(frac, 0.0, None, out=frac)
+    acc, unresolved = accumulate(frac, valid, 1.0, DROW, DCOL)
+    if unresolved:
+        print(f"      note: {unresolved} cells sit in a flow cycle and "
+              f"keep partial accumulation.")
     return acc
 
 
@@ -770,44 +762,34 @@ def main(argv=None):
     # ----------------------------------- 4. accumulate, threshold, vectorize
     transformer = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
     networks, masks, stats, written = {}, {}, {}, []
-    acc_template = None
     for key in selected:
         spec = ALGORITHMS[key]
         step = time.perf_counter()
         print(f"{spec['title']:<6}{spec['one_liner']} - {spec['founder']}")
         if key == "mdinf":
-            if acc_template is None:
-                # WBT returns a bare array; a pysheds Raster is needed as
-                # the template to re-wrap it (only when MDinf runs alone).
-                acc_template = grid.accumulation(fdir_d8, routing="d8")
-            accumulation = as_grid_raster(
-                mdinf_accumulation(mosaic_path, work_dir), acc_template
-            )
-        else:
-            fdir = (fdir_d8 if key == "d8"
-                    else grid.flowdir(conditioned, routing=spec["routing"]))
-            accumulation = grid.accumulation(fdir, routing=spec["routing"])
-            if acc_template is None:
-                acc_template = accumulation
-        fdir_grid = fdir if key != "mdinf" else None
-        if key == "mdinf":
-            # Imported only here, so the script runs without the module.
+            # Imported only here, so the other methods run without the
+            # companion modules.
             try:
+                from accumulation import accumulate  # noqa: F401 - presence
                 from mdinf import mdinf_flowdir
-            except ImportError:
-                print("      no MDinf direction raster: companion module "
-                      "mdinf.py not found next to 03_flow_router.py - "
-                      "skipped.")
-            else:
-                fdir_grid = mdinf_flowdir(np.asarray(conditioned), nodata,
-                                          res[0], res[1],
-                                          exponent=MDINF_EXPONENT)
-        if fdir_grid is not None:
-            written.append(
-                write_fdir_raster(out_dir / f"flow_direction_{key}.tif",
-                                  key, spec, fdir_grid, crs, transform,
-                                  provenance)
-            )
+            except ImportError as exc:
+                print(f"      MDinf skipped: companion module not found "
+                      f"next to 03_flow_router.py ({exc}).")
+                continue
+            fdir_grid = mdinf_flowdir(np.asarray(conditioned), nodata,
+                                      res[0], res[1],
+                                      exponent=MDINF_EXPONENT)
+            accumulation = as_grid_raster(mdinf_accumulation(fdir_grid),
+                                          conditioned)
+        else:
+            fdir_grid = (fdir_d8 if key == "d8"
+                         else grid.flowdir(conditioned, routing=spec["routing"]))
+            accumulation = grid.accumulation(fdir_grid, routing=spec["routing"])
+        written.append(
+            write_fdir_raster(out_dir / f"flow_direction_{key}.tif",
+                              key, spec, fdir_grid, crs, transform,
+                              provenance)
+        )
         segments, mask = build_network(grid, fdir_d8, accumulation,
                                        threshold_cells, sx, sy)
         networks[key] = segments

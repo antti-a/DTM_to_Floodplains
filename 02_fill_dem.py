@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Hydrologically condition (fill) DEMs with WhiteboxTools.
+Hydrologically condition (fill) DEMs with pysheds.
 
 Created on Fri Jul 3 2026
 @author: Antti Ahokas
@@ -15,16 +15,17 @@ which is the default input of the next stage (03_flow_router.py).
 For every GeoTIFF DEM in the input folder, removes the artefacts that
 break downstream flow routing:
 
-  1. fill pits and depressions    (WBT ``FillDepressions``, priority-flood;
-                                   a single-cell pit is just a one-cell
-                                   depression, so one pass removes both --
-                                   WBT's separate ``FillSingleCellPits`` tool
-                                   corrupts valid cells to nodata and is
-                                   deliberately not used)
-  2. resolve flats                (``fix_flats=True`` bakes a tiny gradient
-                                   into the elevations of filled flats, so the
-                                   output DEM itself drains -- not just some
-                                   side-channel flow-direction raster)
+  1. fill pits and depressions    (pysheds ``fill_depressions``, the
+                                   priority-flood of Barnes, Lehman and
+                                   Mulla (2014a); a single-cell pit is just
+                                   a one-cell depression, so one pass
+                                   removes both)
+  2. resolve flats                (pysheds ``resolve_flats``, the flat-
+                                   resolution method of Barnes, Lehman and
+                                   Mulla (2014b): a tiny gradient is baked
+                                   into the elevations of filled flats, so
+                                   the output DEM itself drains -- not just
+                                   some side-channel flow-direction raster)
 
 The inputs are mosaicked *virtually* with ``gdalbuildvrt`` and filled as one
 surface, so depressions spanning tile edges fill correctly (filling is a
@@ -34,7 +35,7 @@ mosaic is then cropped back onto each input's exact grid and written as
 
 The outputs are float64 on purpose. Source elevations are quantized to
 the centimetre, so flat terrain is full of exactly tied cells; the
-``fix_flats`` gradient that makes those ties drain is far smaller than
+flat-resolution gradient that makes those ties drain is far smaller than
 float32 can represent at these elevations, and a float32 output silently
 collapses the flats right back -- downstream flow routing then dies on a
 DEM that merely looks conditioned. float64 keeps the gradients, and the
@@ -43,9 +44,22 @@ fill step verifies that the written mosaic actually drains.
 Notes:
   * Depression removal is fill-only (no breaching), by design.
   * Depressions draining across the mosaic's outer edge fill to the edge
-    elevation ("outlets at edge"); nodata regions likewise act as outlets.
+    elevation ("outlets at edge"). Only the outer rim of the data acts as
+    an outlet: the priority flood is seeded from the outermost valid cell
+    of each row and column, so a depression that drains only into an
+    interior nodata hole fills up to the hole's surrounding rim.
   * Cells that are nodata in an input stay nodata in its output.
   * All inputs must share CRS, cell size and grid alignment (validated).
+
+References:
+  * Barnes, R., Lehman, C. and Mulla, D. (2014a) 'Priority-flood: an
+    optimal depression-filling and watershed-labeling algorithm for
+    digital elevation models', Computers & Geosciences, 62, pp. 117-127.
+  * Barnes, R., Lehman, C. and Mulla, D. (2014b) 'An efficient assignment
+    of drainage direction over flat surfaces in raster digital elevation
+    models', Computers & Geosciences, 62, pp. 128-135.
+  * Bartos, M. (2020) pysheds: simple and fast watershed delineation in
+    python. doi:10.5281/zenodo.3822494
 
 Run inside the ``water`` conda environment:
 
@@ -74,6 +88,19 @@ logger = logging.getLogger("fill_dem")
 NODATA = -9999.0             # KM2 convention; also stamped on the outputs
 KEEP_INTERMEDIATE = False    # keep outputs/_work/ after a successful run
 
+# Flat-resolution parameters (pysheds resolve_flats). Each flat cell is
+# raised by FLAT_EPS times its Barnes drainage-gradient count, which grows
+# up to ~3 * FLAT_MAX_ITER steps. The values are chosen so even the widest
+# resolvable flat inflates by at most 3 mm -- well under the source DEM's
+# 1 cm quantization -- while each single step (1e-8 m) stays orders of
+# magnitude above float64 resolution at Finnish elevations (~1e-13 m at
+# 100 m). FLAT_MAX_ITER must exceed the widest flat in cells; 100 000
+# cells = 200 km at 2 m, far beyond any filled lake here. (The pysheds
+# defaults, eps=1e-5 and max_iter=1000, would inflate big flats by metres
+# and leave flats wider than 2 km unresolved.)
+FLAT_EPS = 1e-8
+FLAT_MAX_ITER = 100_000
+
 # Used when the input carries stage-1 provenance tags (dem_source_tiles).
 SOURCE_DATA_CREDIT = (
     "National Land Survey of Finland 2 m elevation model (KM2), CC BY 4.0, "
@@ -94,7 +121,7 @@ _HERE = Path(__file__).resolve().parent
 DATA_DIR = _HERE / "data"
 INPUT_DIR = DATA_DIR / "01_carved"    # carved DEMs (01_carve_dem.py output)
 OUT_DIR = DATA_DIR / "02_filled"      # filled DEMs -> 03_flow_router.py input
-WORK_DIR = OUT_DIR / "_work"          # mosaic + WBT intermediates
+WORK_DIR = OUT_DIR / "_work"          # mosaic + fill intermediates
 
 
 # --------------------------------------------------------------------------- #
@@ -181,14 +208,15 @@ def validate_inputs(dems: Sequence[Path]) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Mosaic materialisation (WBT cannot read VRTs)
+# Mosaic materialisation
 # --------------------------------------------------------------------------- #
 def materialize_mosaic(vrt_path: Path, out_tif: Path,
                        nodata: float = NODATA) -> Path:
-    """Copy the virtual mosaic into a real GeoTIFF that WBT can open.
+    """Copy the virtual mosaic into a real GeoTIFF for the fill.
 
-    WBT's GeoTIFF reader panics on the floating-point predictor
-    (PREDICTOR=3), so this intermediate is written with predictor 1.
+    Filling is a global operation over one in-memory surface anyway, so
+    reading the mosaic once here costs nothing extra and normalizes the
+    nodata value and any non-finite cells before the fill sees them.
     """
     with rasterio.open(vrt_path) as src:
         dem = src.read(1).astype("float64")
@@ -200,13 +228,12 @@ def materialize_mosaic(vrt_path: Path, out_tif: Path,
             src.width, src.height, src.transform.a, tuple(src.bounds),
         )
         return write_dem(
-            out_tif, dem, src.transform, src.crs, nodata,
-            dtype="float64", predictor=1,
+            out_tif, dem, src.transform, src.crs, nodata, dtype="float64",
         )
 
 
 # --------------------------------------------------------------------------- #
-# The fill (WhiteboxTools)
+# The fill (pysheds)
 # --------------------------------------------------------------------------- #
 def count_undrainable(dem_tif: Path, nodata: float = NODATA) -> tuple[int, int]:
     """Count interior cells with no strictly lower neighbour.
@@ -238,40 +265,52 @@ def count_undrainable(dem_tif: Path, nodata: float = NODATA) -> tuple[int, int]:
 def fill(mosaic_tif: Path, work_dir: Path = WORK_DIR) -> Path:
     """Fill pits + depressions and resolve flats; return the filled mosaic.
 
-    ``FillDepressions`` is a priority-flood fill that removes single-cell
-    pits along with larger depressions; ``fix_flats=True`` applies an
-    automatically chosen tiny increment across flats so the result drains
-    everywhere. That increment only survives the file round-trip in
+    ``fill_depressions`` is a priority-flood fill (Barnes, Lehman and
+    Mulla, 2014a) that removes single-cell pits along with larger
+    depressions; ``resolve_flats`` (Barnes, Lehman and Mulla, 2014b)
+    applies a tiny gradient (``FLAT_EPS`` per step, at most
+    ``FLAT_MAX_ITER`` steps) across flats so the result drains
+    everywhere. That gradient only survives the file round-trip in
     float64 (see the module docstring), so the written mosaic is checked
     here: this function fails loudly rather than hand a non-draining
     "filled" DEM downstream.
 
-    WBT panics still exit with code 0, so the existence check on the output
-    file is the real success test.
+    The nodata mask is taken before filling (``fill_depressions`` mutates
+    its input in place) and re-applied afterwards: ``resolve_flats`` does
+    not exclude nodata regions, whose constant elevation reads as one big
+    flat, so they come back slightly inflated and must not be mistaken
+    for valid interior minima by the drainage check.
     """
-    import whitebox
-
-    wbt = whitebox.WhiteboxTools()
-    wbt.set_verbose_mode(False)
-    wbt.set_working_dir(str(work_dir))
+    from pysheds.grid import Grid
 
     filled_tif = work_dir / "mosaic_filled.tif"
 
-    logger.info("WBT FillDepressions (fix_flats=True) ...")
-    ret = wbt.fill_depressions(
-        str(mosaic_tif), str(filled_tif),
-        fix_flats=True, flat_increment=None, max_depth=None,
-    )
-    if ret != 0 or not filled_tif.exists():
-        raise RuntimeError(f"FillDepressions failed (exit {ret})")
+    grid = Grid.from_raster(str(mosaic_tif))
+    dem = grid.read_raster(str(mosaic_tif))
+    nodata_mask = (np.asarray(dem) == NODATA) | ~np.isfinite(np.asarray(dem))
+
+    logger.info("pysheds fill_depressions (priority-flood) ...")
+    flooded = grid.fill_depressions(dem)
+
+    logger.info("pysheds resolve_flats (eps=%g, max_iter=%d) ...",
+                FLAT_EPS, FLAT_MAX_ITER)
+    inflated = grid.resolve_flats(flooded, eps=FLAT_EPS,
+                                  max_iter=FLAT_MAX_ITER)
+
+    band = np.asarray(inflated, dtype="float64")
+    band[nodata_mask | ~np.isfinite(band)] = NODATA
+    with rasterio.open(mosaic_tif) as src:
+        write_dem(filled_tif, band, src.transform, src.crs, NODATA,
+                  dtype="float64")
 
     stuck, valid = count_undrainable(filled_tif)
     logger.info("Drainage check: %d of %d valid cells undrainable", stuck, valid)
     if stuck > max(1, valid // 1000):
         raise RuntimeError(
             f"Filled mosaic does not drain: {stuck} of {valid} cells have no "
-            f"lower neighbour. The fix_flats gradients were lost - check that "
-            f"every step keeps the DEM in float64."
+            f"lower neighbour. The flat-resolution gradients were lost - "
+            f"check that every step keeps the DEM in float64, and that "
+            f"FLAT_MAX_ITER exceeds the widest flat in cells."
         )
     return filled_tif
 
@@ -291,8 +330,8 @@ def write_dem(
 ) -> Path:
     """Write a single-band GeoTIFF (tiled + compressed) in ``dtype``.
 
-    ``predictor`` overrides the dtype-based default; pass 1 for rasters
-    that WBT must read (its reader rejects PREDICTOR=3).
+    ``predictor`` overrides the dtype-based default (3 = floating-point,
+    2 = integer horizontal differencing).
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -384,11 +423,13 @@ def crop_back(
         filled, transform, crs, nodata, dtype="float64",
         tags=dict(
             title="Hydrologically conditioned (depression-filled) DEM",
-            fill_method="WhiteboxTools FillDepressions, fix_flats=True, run "
+            fill_method="pysheds fill_depressions (priority-flood, Barnes "
+                        "et al. 2014) + resolve_flats (Barnes et al. 2014, "
+                        f"eps={FLAT_EPS:g}, max_iter={FLAT_MAX_ITER}), run "
                         "on the virtual mosaic of all input tiles and "
                         "cropped back to this tile's grid; float64 preserves "
-                        "the flat-fix gradients",
-            dem_fill="wbt_fill_depressions_fix_flats",
+                        "the flat-resolution gradients",
+            dem_fill="pysheds_fill_depressions_resolve_flats",
             source_data_credit=(SOURCE_DATA_CREDIT
                                 if "dem_source_tiles" in forwarded
                                 else SOURCE_DATA_CREDIT_PRESUMED),

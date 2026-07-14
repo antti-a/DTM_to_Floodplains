@@ -7,9 +7,11 @@ folders. Each script also works standalone (run it with no arguments, or
 point it elsewhere with its own CLI options).
 
 The stage scripts are numbered in pipeline order (`01_` … `06_`), and the
-runner that calls them is `00_run_pipeline.py`. Only `mdinf.py` carries no
-number: it is not a stage but a companion module used only through
-`03_flow_router.py` when the optional MDinf method is requested.
+runner that calls them is `00_run_pipeline.py`. Two files carry no number:
+they are not stages but companion modules — `mdinf.py` (MDinf directions,
+used through `03_flow_router.py` when the optional MDinf method is
+requested) and `accumulation.py` (the flow-accumulation kernel shared by
+stages 3 and 4).
 
 ```
 data/00_source_dems/*.tif                 source KM2 DEM tiles (drop them here)
@@ -19,7 +21,7 @@ data/00_source_dems/*.tif                 source KM2 DEM tiles (drop them here)
 data/01_carved/carved_*.tif
         |
         v  02_fill_dem.py         fill pits/depressions,
-        |                         resolve flats (WBT, float64)
+        |                         resolve flats (pysheds, float64)
 data/02_filled/filled_*.tif
         |
         v  03_flow_router.py      route D8 (default; MFD, Dinf,
@@ -102,17 +104,17 @@ Notes per stage:
    "Tierumpujen uomakorjaus" WCS layer so flow crosses road embankments.
    Downloads are windowed, tiled and cached in `data/culvert_cache/`
    (a re-run skips finished tiles).
-2. **Fill** — WhiteboxTools `FillDepressions` with `fix_flats=True` on the
-   virtual mosaic of all tiles (depressions spanning tile edges fill
-   correctly), then crops back to each tile's grid. Outputs are **float64**
-   on purpose: the flat-fix gradients are smaller than float32 can hold at
-   these elevations, and saving as float32 would silently un-condition the
-   DEM. `03_flow_router.py` verifies this and stops if the DEM does not
-   drain.
+2. **Fill** — pysheds `fill_depressions` (priority-flood; Barnes et al.,
+   2014) plus `resolve_flats` (Barnes et al., 2014) on the virtual mosaic
+   of all tiles (depressions spanning tile edges fill correctly), then
+   crops back to each tile's grid. Outputs are **float64** on purpose: the
+   flat-resolution gradients are smaller than float32 can hold at these
+   elevations, and saving as float32 would silently un-condition the DEM.
+   `03_flow_router.py` verifies this and stops if the DEM does not drain.
 3. **Route** — mosaics the filled tiles, verifies drainage, and routes flow.
    **D8 alone by default** — the format every later stage consumes; MFD,
-   Dinf (pysheds) and MDinf (WhiteboxTools accumulation; directions
-   recomputed by `mdinf.py`) run on request via `--fdir` (e.g. `--fdir all`
+   Dinf (pysheds) and MDinf (directions from `mdinf.py`, accumulated by
+   `accumulation.py`) run on request via `--fdir` (e.g. `--fdir all`
    to compare all four). Each selected algorithm gets its stream network
    (GeoJSON, WGS84), its row in the comparison table (CSV) and its
    `flow_direction_*.tif` raster.
@@ -172,7 +174,7 @@ consumes the file:
 |---|---|---|---|
 | `dem_source_tiles` | `L4142E.tif, L4142F.tif` | 1 | original source-DEM filenames (comma+space separated, sorted); mosaic stages record the union across tiles |
 | `dem_carve` | `syke_culvert_min` | 1 | culvert carving: cell-wise `min(DEM, SYKE Tierumpujen uomakorjaus)` |
-| `dem_fill` | `wbt_fill_depressions_fix_flats` | 2 | WBT `FillDepressions`, `fix_flats=True`, float64 |
+| `dem_fill` | `pysheds_fill_depressions_resolve_flats` | 2 | pysheds `fill_depressions` + `resolve_flats`, float64 |
 | `flow_routing_algorithm` | `d8` | 3 | routing algorithm key (`d8`/`mfd`/`dinf`/`mdinf`); stages 5–6 read it from their inputs instead of assuming D8 |
 | `stream_threshold_km2` | `0.2` | 5, 6 | `--upa-min`: min upstream area defining stream/drain cells — **not** stage 3's `--area`, which only shapes the vector network |
 | `gfplain_a`, `gfplain_b` | `0.63`, `0.3` | 6 | GFPLAIN parameters in `h = a * A**b` |
@@ -193,8 +195,8 @@ encode "no flow to this neighbour" differently:
   cells; a cell is all-NaN only when it is nodata or has no downslope facet
   at all (a pit/flat — essentially absent from a conditioned DEM). Near
   flats and edges its fractions can sum to slightly less than 1: flow aimed
-  at a nodata/flat neighbour is simply lost from the domain, as
-  WhiteboxTools does.
+  at a nodata/flat neighbour is simply lost from the domain, as in the
+  WhiteboxTools implementation the module was ported from.
 
 The in-pipeline consumer handles both conventions explicitly, treating a
 cell as valid when *any* band is finite and NaN bands as 0
@@ -215,15 +217,26 @@ grids): HAND after Nobre et al. (2016) with the reached-drain nodata rule
 described under stage 5, and GFPLAIN after Nardi et al. (2019) with the
 coefficient `a` made an explicit parameter.
 
-Other essential tools: WhiteboxTools (stage 2 depression filling, MDinf
-accumulation), pysheds (D8/MFD/Dinf routing), rasterio/GDAL, NumPy and
-Numba. The MDinf direction mathematics in `mdinf.py` follow Seibert and
-McGlynn (2007), ported via WhiteboxTools' MIT-licensed implementation.
+Other essential tools: pysheds (D8/MFD/Dinf routing; stage 2 depression
+filling and flat resolution after Barnes, Lehman and Mulla, 2014),
+rasterio/GDAL, NumPy and Numba. The MDinf direction mathematics in
+`mdinf.py` follow Seibert and McGlynn (2007), ported via WhiteboxTools'
+MIT-licensed implementation (John Lindsay).
 
 Source data: KM2 2 m DEM © National Land Survey of Finland (CC BY 4.0);
 culvert corrections: SYKE "Tierumpujen uomakorjaus" WCS (CC BY 4.0).
 
 ## References
+
+Barnes, R., Lehman, C. and Mulla, D. (2014) 'Priority-flood: an optimal
+depression-filling and watershed-labeling algorithm for digital elevation
+models', *Computers & Geosciences*, 62, pp. 117–127. Available at:
+https://doi.org/10.1016/j.cageo.2013.04.024
+
+Barnes, R., Lehman, C. and Mulla, D. (2014) 'An efficient assignment of
+drainage direction over flat surfaces in raster digital elevation models',
+*Computers & Geosciences*, 62, pp. 128–135. Available at:
+https://doi.org/10.1016/j.cageo.2013.01.009
 
 Eilander, D., van Verseveld, W., Yamazaki, D., Weerts, A., Winsemius, H.C.
 and Ward, P.J. (2021) 'A hydrography upscaling method for scale-invariant

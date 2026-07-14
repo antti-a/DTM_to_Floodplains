@@ -4,9 +4,10 @@
 #
 # Notes:
 # * gdal brings the GDAL CLI tools (gdalbuildvrt) stages 1-2 shell out to.
-# * whitebox downloads the WhiteboxTools binary on first use - run stage 2
-#   once on a node with internet access (or pre-download the binary) before
-#   submitting offline batch jobs.
+# * Everything below ships through conda - nothing downloads at runtime, so
+#   the pipeline runs on offline compute nodes once the env is built (only
+#   stage 1's culvert-DEM fetch needs internet, and its cache can be
+#   pre-populated).
 name: water
 channels:
   - conda-forge
@@ -19,6 +20,5 @@ dependencies:
   - pysheds
   - pyflwdir
   - numba
-  - whitebox
   - requests
   - owslib

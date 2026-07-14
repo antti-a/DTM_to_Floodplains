@@ -1,4 +1,4 @@
-"""mdinf.py - MDinf flow directions, the optional companion to 03_flow_router.py.
+"""mdinf.py - MDinf flow directions, companion module to 03_flow_router.py.
 
 Created on Sat Jul 4 2026
 @author: Antti Ahokas
@@ -6,21 +6,22 @@ Written with Claude Code (Anthropic).
 
 03_flow_router.py imports this module ONLY when the MDinf method is
 requested (--fdir mdinf, or --fdir all); without this file next to it the
-script still runs fully, printing a note and skipping that one raster.
+script still runs fully, printing a note and skipping that one method.
 
-WHY THIS MODULE EXISTS
-    03_flow_router.py gets its MDinf accumulation from WhiteboxTools, which
-    computes the flow directions internally and returns only the
-    accumulated result - there is no tool that writes the directions out.
-    But WhiteboxTools is open source, so this module recomputes them with
-    the same mathematics: the direction-partitioning half of its
-    MDInfFlowAccumulation (mdinf_flow_accum.rs, MIT license, John Lindsay),
-    itself a port of the original Java implementation written by the
-    method's authors, Jan Seibert and Marc Vis, for Whitebox GAT. An MDinf
-    direction depends only on the 3x3 neighbourhood of a cell, not on the
-    accumulation, so the fractions produced here are the very ones the
-    WhiteboxTools accumulation follows (our runs use no convergence
-    threshold, so its D8 fallback branch never fires).
+PROVENANCE
+    This is the pipeline's MDinf implementation: 03_flow_router.py routes
+    D8, MFD and Dinf through pysheds, which has no MDinf, so the fractions
+    come from here and are accumulated by the shared kernel in
+    accumulation.py. The mathematics is the direction-partitioning half of
+    WhiteboxTools' MDInfFlowAccumulation (mdinf_flow_accum.rs, MIT license,
+    John Lindsay), itself a port of the original Java implementation
+    written by the method's authors, Jan Seibert and Marc Vis, for Whitebox
+    GAT. An MDinf direction depends only on the 3x3 neighbourhood of a
+    cell, not on the accumulation, so the fractions produced here are the
+    very ones a WhiteboxTools accumulation of the same surface would follow
+    (with no convergence threshold, so its D8 fallback branch never fires) -
+    the two implementations were compared on this pipeline's test tiles
+    before WhiteboxTools was retired from the dependencies.
 
 THE ALGORITHM - MDinf, Seibert and McGlynn (2007)
     The terrain around each cell is modelled as eight planar triangular

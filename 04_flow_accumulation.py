@@ -37,7 +37,9 @@ using Kahn's (1962) queue algorithm, JIT-compiled with Numba. Each cell is
 visited exactly once, so the run time is O(n cells). Flow directed at NoData
 cells or off the grid edge leaves the domain. Cells caught in a directed
 cycle (should not occur in a well-formed flow-direction raster) are reported
-and left with partial accumulation.
+and left with partial accumulation. The kernel lives in the companion
+module ``accumulation.py``, shared with 03_flow_router.py so the network
+thresholded there and the rasters written here use the same arithmetic.
 
 Output
 ------
@@ -91,17 +93,17 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
-from numba import njit
+
+from accumulation import DROW, DCOL, accumulate
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 # Canonical neighbour order used throughout: N, NE, E, SE, S, SW, W, NW
-# (matches the band order of the MFD / MD-infinity input rasters).
+# (matches the band order of the MFD / MD-infinity input rasters and the
+# DROW / DCOL offsets in accumulation.py).
 NEIGHBOUR_NAMES = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
-DROW = np.array([-1, -1, 0, 1, 1, 1, 0, -1], dtype=np.int64)
-DCOL = np.array([0, 1, 1, 1, 0, -1, -1, -1], dtype=np.int64)
 
 # D8 receiver codes in canonical neighbour order.
 D8_CODES = (64, 128, 1, 2, 4, 8, 16, 32)
@@ -177,74 +179,6 @@ METHODS = {
         "digital elevation models', Water Resources Research, 43(4), W04501.",
     ),
 }
-
-
-# ---------------------------------------------------------------------------
-# Numba kernels
-# ---------------------------------------------------------------------------
-
-@njit(cache=True)
-def _accumulate(frac, valid, cell_area, drow, dcol):
-    """Weighted flow accumulation in topological order (Kahn's algorithm).
-
-    frac  : float32 (rows, cols, 8) outflow fraction per neighbour
-    valid : bool    (rows, cols)    data mask
-    Returns (accumulation float64 (rows, cols), number of unprocessed cells).
-    """
-    rows, cols, _ = frac.shape
-    acc = np.zeros((rows, cols), dtype=np.float64)
-    indeg = np.zeros((rows, cols), dtype=np.int32)
-
-    # In-degree = number of valid donors draining into each cell.
-    for r in range(rows):
-        for c in range(cols):
-            if not valid[r, c]:
-                continue
-            acc[r, c] = cell_area
-            for k in range(8):
-                if frac[r, c, k] > 0.0:
-                    nr = r + drow[k]
-                    nc = c + dcol[k]
-                    if 0 <= nr < rows and 0 <= nc < cols and valid[nr, nc]:
-                        indeg[nr, nc] += 1
-
-    # Seed the queue with cells that receive no inflow (local maxima).
-    queue = np.empty(rows * cols, dtype=np.int64)
-    tail = 0
-    for r in range(rows):
-        for c in range(cols):
-            if valid[r, c] and indeg[r, c] == 0:
-                queue[tail] = r * cols + c
-                tail += 1
-
-    # Pop cells whose upstream area is complete and push it downstream.
-    head = 0
-    processed = 0
-    while head < tail:
-        idx = queue[head]
-        head += 1
-        processed += 1
-        r = idx // cols
-        c = idx % cols
-        a = acc[r, c]
-        for k in range(8):
-            f = frac[r, c, k]
-            if f > 0.0:
-                nr = r + drow[k]
-                nc = c + dcol[k]
-                if 0 <= nr < rows and 0 <= nc < cols and valid[nr, nc]:
-                    acc[nr, nc] += f * a
-                    indeg[nr, nc] -= 1
-                    if indeg[nr, nc] == 0:
-                        queue[tail] = nr * cols + nc
-                        tail += 1
-
-    n_valid = 0
-    for r in range(rows):
-        for c in range(cols):
-            if valid[r, c]:
-                n_valid += 1
-    return acc, n_valid - processed
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +280,7 @@ def process(path: Path, out_dir: Path, units: str) -> Path:
           f"{int(valid.sum())} valid cells")
 
     cell_value = cell_area_m2 if units == "m2" else 1.0
-    acc, unresolved = _accumulate(frac, valid, cell_value, DROW, DCOL)
+    acc, unresolved = accumulate(frac, valid, cell_value, DROW, DCOL)
     del frac
     if unresolved:
         print(f"  WARNING: {unresolved} cells form directed cycles; "
