@@ -95,6 +95,7 @@ import numpy as np
 import rasterio
 
 from accumulation import DROW, DCOL, accumulate
+from pipeline_io import SOURCE_DATA_CREDIT_KNOWN, TOOL_CREDITS, swap_in
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -117,19 +118,6 @@ SOURCE_DATA_CREDIT = (
     "Flow-direction rasters derived from a 2 m DEM in EPSG:3067 (ETRS89 / "
     "TM35FIN), vertical datum N2000; presumed source: National Land Survey "
     "of Finland 2 m elevation model (KM2), CC BY 4.0."
-)
-
-# Used instead when the input forwards stage-1 provenance tags.
-SOURCE_DATA_CREDIT_KNOWN = (
-    "National Land Survey of Finland 2 m elevation model (KM2), CC BY 4.0, "
-    "carved with the SYKE 'Tierumpujen uomakorjaus' culvert correction "
-    "(CC BY 4.0); source tiles in the dem_source_tiles tag."
-)
-
-TOOL_CREDITS = (
-    "Python, NumPy (Harris et al., 2020, doi:10.1038/s41586-020-2649-2), "
-    "Numba (Lam, Pitrou and Seibert, 2015, doi:10.1145/2833157.2833162), "
-    "rasterio (Gillies et al.), GDAL (GDAL/OGR contributors, OSGeo)."
 )
 
 ACCUMULATION_METHOD = (
@@ -307,7 +295,8 @@ def process(path: Path, out_dir: Path, units: str) -> Path:
         compress="deflate", predictor=3, tiled=True,
         blockxsize=512, blockysize=512, bigtiff="if_safer",
     )
-    with rasterio.open(out_path, "w", **profile) as dst:
+    tmp = out_path.with_name(out_path.stem + ".part.tif")
+    with rasterio.open(tmp, "w", **profile) as dst:
         dst.write(out, 1)
         dst.update_tags(
             title=f"Flow accumulation ({method.name})",
@@ -327,6 +316,7 @@ def process(path: Path, out_dir: Path, units: str) -> Path:
             generated_by="04_flow_accumulation.py",
             **forwarded,
         )
+    out_path = swap_in(tmp, out_path)
     print(f"  -> {out_path}  ({time.perf_counter() - t0:.1f} s)")
     return out_path
 

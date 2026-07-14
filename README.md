@@ -7,11 +7,14 @@ folders. Each script also works standalone (run it with no arguments, or
 point it elsewhere with its own CLI options).
 
 The stage scripts are numbered in pipeline order (`01_` … `06_`), and the
-runner that calls them is `00_run_pipeline.py`. Two files carry no number:
-they are not stages but companion modules — `mdinf.py` (MDinf directions,
-used through `03_flow_router.py` when the optional MDinf method is
-requested) and `accumulation.py` (the flow-accumulation kernel shared by
-stages 3 and 4).
+runner that calls them is `00_run_pipeline.py`. Three files carry no
+number: they are not stages but companion modules — `mdinf.py` (MDinf
+directions, used through `03_flow_router.py` when the optional MDinf
+method is requested), `accumulation.py` (the flow-accumulation kernel
+shared by stages 3 and 4) and `pipeline_io.py` (the shared I/O layer of
+stages 3–6: tile discovery and validation, provenance-tag merging,
+in-memory mosaicking, D8/accumulation raster loading, lock-tolerant
+tagged-GeoTIFF writing).
 
 ```
 data/00_source_dems/*.tif                 source KM2 DEM tiles (drop them here)

@@ -4,9 +4,8 @@ Created on Sat Jul 4 2026
 @author: Antti Ahokas
 Written with Claude Code (Anthropic).
 
-03_flow_router.py imports this module ONLY when the MDinf method is
-requested (--fdir mdinf, or --fdir all); without this file next to it the
-script still runs fully, printing a note and skipping that one method.
+03_flow_router.py computes MDinf flow directions with this module when
+the MDinf method is requested (--fdir mdinf, or --fdir all).
 
 PROVENANCE
     This is the pipeline's MDinf implementation: 03_flow_router.py routes

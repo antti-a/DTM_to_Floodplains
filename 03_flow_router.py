@@ -45,8 +45,8 @@ descriptions and tags document their encoding:
   flow_direction_dinf.tif      one float32 band: flow angle in [0, 2*pi)
                                radians counter-clockwise from east
   flow_direction_mdinf.tif     eight float32 bands of flow fractions, like
-                               MFD - needs the companion modules mdinf.py
-                               and accumulation.py
+                               MFD - computed by the companion module
+                               mdinf.py
 
     (in d8 and dinf, -1 marks a flat and -2 a pit)
 
@@ -54,9 +54,7 @@ descriptions and tags document their encoding:
     MDinf, so the directions come from the companion module mdinf.py
     (the method's mathematics ported from Jan Seibert & Marc Vis's own
     implementation via WhiteboxTools' MIT-licensed source) and the
-    accumulation from the shared kernel in accumulation.py. Both modules
-    are imported only when the mdinf method is requested; if either file
-    is not next to this script the run prints a note and skips MDinf.
+    accumulation from the shared kernel in accumulation.py.
 
 The tuning knobs are constants at the top of the script:
 
@@ -74,17 +72,12 @@ USAGE
     python 03_flow_router.py --describe       # print the algorithm definitions
     python 03_flow_router.py --dem a.tif b.tif --out results
 
-SHARING
-    The script is a single file with no hard-coded paths: put it next to
-    a "dem" folder holding one or more GeoTIFF tiles (same CRS, cell size
-    and grid alignment) and run it with any Python >= 3.9 that has the
-    dependencies installed. One optional extra: share mdinf.py and
-    accumulation.py alongside if the MDinf method is wanted (everything
-    else works without them; they need numba, which pysheds installs
-    anyway).
-
-        pip install pysheds rasterio pyproj numpy
-        (or conda -c conda-forge)
+COMPANION MODULES
+    The unnumbered modules next to this script are part of it: mdinf.py
+    (MDinf flow directions), accumulation.py (the accumulation kernel
+    shared with stage 4) and pipeline_io.py (tile validation, provenance
+    tags, lock-tolerant output swapping). The script is not meant to be
+    copied around as a single file.
 
     GeoJSON output is RFC 7946 compliant (coordinates in WGS84), so the
     files drop straight into QGIS, geojson.io, kepler.gl, Leaflet, ...
@@ -187,7 +180,6 @@ import argparse
 import csv
 import json
 import math
-import os
 import shutil
 import sys
 import time
@@ -199,6 +191,12 @@ from rasterio.merge import merge as rio_merge
 from pyproj import Transformer
 from pysheds.grid import Grid
 
+from accumulation import DROW, DCOL, accumulate
+from mdinf import mdinf_flowdir
+from pipeline_io import (
+    collect_provenance, find_dems, swap_in, validate_tiles,
+)
+
 # Minimum catchment (contributing) area that defines a stream, in km2.
 # The one tuning knob: edit it here, or override per run with --area.
 DEFAULT_MIN_AREA_KM2 = 1
@@ -209,8 +207,7 @@ DEFAULT_MIN_AREA_KM2 = 1
 # flow-direction raster (flow_direction_*.tif). The formats differ:
 # D8 = one band of integer direction codes, Dinf = one band of flow angle
 # in radians, MFD and MDinf = eight bands of flow fractions (N, NE, ... NW).
-# The MDinf method needs the companion modules mdinf.py and accumulation.py
-# next to this script; without them, the run prints a note and skips MDinf.
+# The MDinf method runs in the companion modules mdinf.py + accumulation.py.
 DEFAULT_METHODS = ("d8",)
 
 MDINF_EXPONENT = 1.1  # facet-slope exponent p for MDinf (Freeman's value)
@@ -241,89 +238,6 @@ ALGORITHMS = {
         "one_liner": "flow dispersed over all downslope triangular facets, Dinf-style",
     },
 }
-
-
-def find_dems(dem_args, script_dir):
-    """Resolve the DEM tile paths: --dem wins, else every GeoTIFF in ./dem."""
-    if dem_args:
-        paths = [Path(p) for p in dem_args]
-        missing = [p for p in paths if not p.is_file()]
-        if missing:
-            sys.exit("DEM not found: " + ", ".join(str(p) for p in missing))
-        return paths
-    dem_dir = script_dir / "data" / "02_filled"
-    paths = sorted(dem_dir.glob("*.tif")) + sorted(dem_dir.glob("*.tiff"))
-    if not paths:
-        sys.exit(f"No GeoTIFF found in {dem_dir} (and no --dem given). "
-                 f"Run 02_fill_dem.py first.")
-    return paths
-
-
-def validate_tiles(paths):
-    """Require one shared CRS, cell size and grid lattice across the tiles.
-
-    The tiles are merged and routed as one surface, so a tile on a shifted
-    grid or in another CRS would be silently resampled - fail instead.
-    Overlapping tiles are fine for a mosaic (last one wins) but worth a note.
-    """
-    infos = []
-    for path in paths:
-        with rasterio.open(path) as src:
-            infos.append((path.name, src.crs, src.transform, src.bounds))
-
-    name0, crs0, t0, _ = infos[0]
-    res0 = (abs(t0.a), abs(t0.e))
-    for name, crs, t, _ in infos[1:]:
-        if crs != crs0:
-            sys.exit(f"{name}: CRS {crs} != {crs0} ({name0})")
-        if (abs(t.a), abs(t.e)) != res0:
-            sys.exit(f"{name}: cell size {(abs(t.a), abs(t.e))} != {res0} ({name0})")
-        dx = (t.c - t0.c) / t.a
-        dy = (t.f - t0.f) / t.e
-        if abs(dx - round(dx)) > 1e-6 or abs(dy - round(dy)) > 1e-6:
-            sys.exit(f"{name}: grid origin misaligned with {name0} by "
-                     f"({dx % 1:.6f}, {dy % 1:.6f}) cells")
-
-    for i, (name_a, _, _, ba) in enumerate(infos):
-        for name_b, _, _, bb in infos[i + 1:]:
-            if (ba.left < bb.right and bb.left < ba.right
-                    and ba.bottom < bb.top and bb.bottom < ba.top):
-                print(f"Note: tiles {name_a} and {name_b} overlap; "
-                      f"the mosaic keeps the later one there.")
-
-
-def collect_provenance(paths):
-    """Merge the tiles' provenance tags (stamped by stages 1-2).
-
-    ``dem_source_tiles`` becomes the sorted union across the tiles;
-    ``dem_carve`` / ``dem_fill`` are forwarded only when every tagged tile
-    agrees. Untagged (pre-convention) tiles only cost a note, never a
-    failure, so old intermediates keep working.
-    """
-    tile_tags = []
-    for path in paths:
-        with rasterio.open(path) as src:
-            tile_tags.append(src.tags())
-
-    merged = {}
-    sources = set()
-    for tags in tile_tags:
-        sources.update(
-            t for t in tags.get("dem_source_tiles", "").split(", ") if t
-        )
-    if sources:
-        merged["dem_source_tiles"] = ", ".join(sorted(sources))
-    else:
-        print("Note: the tiles carry no provenance tags (pre-convention "
-              "inputs); outputs will not name the source DEM tiles.")
-    for key in ("dem_carve", "dem_fill"):
-        values = {tags[key] for tags in tile_tags if key in tags}
-        if len(values) == 1:
-            merged[key] = values.pop()
-        elif len(values) > 1:
-            print(f"Note: the tiles disagree on the {key} tag "
-                  f"({', '.join(sorted(values))}); tag omitted.")
-    return merged
 
 
 def build_mosaic(paths, work_dir, nodata=-9999.0):
@@ -436,8 +350,6 @@ def mdinf_accumulation(fractions):
     NaN, and such cells accumulate 0 so they can never reach the
     threshold.
     """
-    from accumulation import DROW, DCOL, accumulate
-
     frac = np.moveaxis(np.asarray(fractions), 0, -1).astype(np.float32)
     valid = ~np.isnan(frac).all(axis=2)
     np.nan_to_num(frac, copy=False, nan=0.0)
@@ -486,31 +398,6 @@ def build_network(grid, fdir_d8, accumulation, threshold_cells, sx, sy):
             }
         )
     return segments, np.asarray(stream_mask, dtype=bool)
-
-
-def swap_in(tmp, path):
-    """Move a finished temp file onto its final name; return the real path.
-
-    Overwriting a file that a viewer, Excel or a sync tool still holds
-    open fails on Windows (OSError 22/13), and a long run must not die
-    on its final writes - so every output is written to a temp name and
-    swapped in, falling back to a numbered sibling when the target is
-    locked.
-    """
-    try:
-        os.replace(tmp, path)
-        return path
-    except OSError:
-        for i in range(1, 100):
-            alt = path.with_name(f"{path.stem}_{i}{path.suffix}")
-            try:
-                os.replace(tmp, alt)
-            except OSError:
-                continue
-            print(f"Note: {path.name} is held open by another program; "
-                  f"wrote {alt.name} instead.")
-            return alt
-        raise
 
 
 def write_fdir_raster(path, key, spec, fdir, crs, transform,
@@ -725,7 +612,7 @@ def main(argv=None):
         selected = [k for k in ALGORITHMS if k in DEFAULT_METHODS]
 
     # -------------------------------------------- 2. DEM tiles in, mosaicked
-    dem_paths = find_dems(args.dem, script_dir)
+    dem_paths = find_dems(args.dem, script_dir / "data" / "02_filled")
     validate_tiles(dem_paths)
     provenance = collect_provenance(dem_paths)
     out_dir = Path(args.out) if args.out else script_dir / "data" / "03_flows"
@@ -767,15 +654,6 @@ def main(argv=None):
         step = time.perf_counter()
         print(f"{spec['title']:<6}{spec['one_liner']} - {spec['founder']}")
         if key == "mdinf":
-            # Imported only here, so the other methods run without the
-            # companion modules.
-            try:
-                from accumulation import accumulate  # noqa: F401 - presence
-                from mdinf import mdinf_flowdir
-            except ImportError as exc:
-                print(f"      MDinf skipped: companion module not found "
-                      f"next to 03_flow_router.py ({exc}).")
-                continue
             fdir_grid = mdinf_flowdir(np.asarray(conditioned), nodata,
                                       res[0], res[1],
                                       exponent=MDINF_EXPONENT)
