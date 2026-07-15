@@ -25,15 +25,15 @@ with different parameters. The three unnumbered files are companion modules
 ## Quick start
 
 ```bash
-git clone https://github.com/antti-a/DTM\_to\_Floodplains.git
-cd DTM\_to\_Floodplains
+git clone https://github.com/antti-a/DTM_to_Floodplains.git
+cd DTM_to_Floodplains
 conda env create -f environment.yml
 conda activate water
-# drop your DTM tiles (GeoTIFF) into data/00\_source\_dems/
+# drop your DTM tiles (GeoTIFF) into data/00_source_dems/
 python 00\_run\_pipeline.py
 ```
 
-The result is `data/06\_floodplains/floodplains.tif` (1 = floodplain,
+The result is `data/06_floodplains/floodplains.tif` (1 = floodplain,
 0 = upland) plus every intermediate product.
 
 ## Running the pipeline
@@ -41,16 +41,16 @@ The result is `data/06\_floodplains/floodplains.tif` (1 = floodplain,
 Full run: All six stages:
 
 ```bash
-python 00\_run\_pipeline.py
+python 00_run_pipeline.py
 ```
 
-Resume after a failure, or run a subset — earlier stages' outputs are
-reused:
+Resume after a failure, or run a subset (earlier stages' outputs are
+reused):
 
 ```bash
-python 00\_run\_pipeline.py --from route
-python 00\_run\_pipeline.py --only fill route
-python 00\_run\_pipeline.py --skip hand
+python 00_run_pipeline.py --from route
+python 00_run_pipeline.py --only fill route
+python 00_run_pipeline.py --skip hand
 ```
 
 Adjust the floodplain parameters: The flood level `h = a·A^b` is the
@@ -59,15 +59,15 @@ only parametrized step. How to choose `a` and `b` depends on the application.
 For example:
 
 ```bash
-python 06\_floodplains.py --a 0.5 --b 0.35
+python 06_floodplains.py --a 0.5 --b 0.35
 ```
 
 Denser or sparser stream network for HAND and the floodplains: Lower
 or raise the stream-initiation threshold (km² of upstream area):
 
 ```bash
-python 05\_hand.py --upa-min 0.1
-python 06\_floodplains.py --upa-min 0.1
+python 05_hand.py --upa-min 0.1
+python 06_floodplains.py --upa-min 0.1
 ```
 
 Compare d8, mfd, dinf and mdinf flow routing algorithms (not needed for
@@ -77,20 +77,20 @@ raster and a comparison table (stream cells, Jaccard overlaps, drainage
 density):
 
 ```bash
-python 03\_flow\_router.py --fdir all
+python 03_flow_router.py --fdir all
 ```
 
 ### Flag reference
 
 |script|flag|meaning (default)|
 |-|-|-|
-|`00\_run\_pipeline.py`|`--from`, `--only`, `--skip`|which stages to run|
-|`00\_run\_pipeline.py`|`--area KM2`|forwarded to stage 3 (1.0)|
-|`03\_flow\_router.py`|`--area KM2`|minimum contributing area defining a stream in the vector network (1.0)|
-|`03\_flow\_router.py`|`--fdir d8 mfd dinf mdinf` / `all`|routing algorithms to run (d8)|
-|`04\_flow\_accumulation.py`|`--units m2/cells`|accumulation in square metres (m2) or cell counts|
-|`05\_hand.py`, `06\_floodplains.py`|`--upa-min KM2`|stream-initiation threshold (0.2)|
-|`06\_floodplains.py`|`--a`, `--b`|GFPLAIN power law `h = a·A^b` (0.63, 0.3)|
+|`00_run_pipeline.py`|`--from`, `--only`, `--skip`|which stages to run|
+|`00_run_pipeline.py`|`--area KM2`|forwarded to stage 3 (1.0)|
+|`03_flow_router.py`|`--area KM2`|minimum contributing area defining a stream in the vector network (1.0)|
+|`03_flow_router.py`|`--fdir d8 mfd dinf mdinf` / `all`|routing algorithms to run (d8)|
+|`04_flow_accumulation.py`|`--units m2/cells`|accumulation in square metres (m2) or cell counts|
+|`05_hand.py`, `06\_floodplains.py`|`--upa-min KM2`|stream-initiation threshold (0.2)|
+|`06_floodplains.py`|`--a`, `--b`|GFPLAIN power law `h = a·A^b` (0.63, 0.3)|
 
 `python <script> --help` lists everything, including flags that repoint the
 input and output locations. Stages 1–2 are configured by the constants at
@@ -101,18 +101,18 @@ values are simply the defaults a no-argument run uses.
 
 |#|script|reads|writes|
 |-|-|-|-|
-|1|`01\_carve\_dem.py`|`data/00\_source\_dems/`|`data/01\_carved/` (+ `data/culvert\_cache/`)|
-|2|`02\_fill\_dem.py`|`data/01\_carved/`|`data/02\_filled/`|
-|3|`03\_flow\_router.py`|`data/02\_filled/`|`data/03\_flows/`|
-|4|`04\_flow\_accumulation.py`|`data/03\_flows/flow\_direction\_\*.tif`|`data/04\_accumulation/`|
-|5|`05\_hand.py`|`data/02\_filled/` + `data/03\_flows/flow\_direction\_d8.tif` + `data/04\_accumulation/flow\_accumulation\_d8.tif`|`data/05\_hand/`|
-|6|`06\_floodplains.py`|same as stage 5|`data/06\_floodplains/`|
+|1|`01_carve_dem.py`|`data/00_source_dems/`|`data/01_carved/` (+ `data/culvert_cache/`)|
+|2|`02_fill_dem.py`|`data/01_carved/`|`data/02_filled/`|
+|3|`03_flow_router.py`|`data/02_filled/`|`data/03_flows/`|
+|4|`04_flow_accumulation.py`|`data/03_flows/flow_direction_\*.tif`|`data/04_accumulation/`|
+|5|`05_hand.py`|`data/02_filled/` + `data/03_flows/flow_direction_d8.tif` + `data/04_accumulation/flow_accumulation_d8.tif`|`data/05_hand/`|
+|6|`06_floodplains.py`|same as stage 5|`data/06_floodplains/`|
 
 1. **Carve** — lowers the DEM at culverts and road crossings with the SYKE
 "Tierumpujen uomakorjaus" WCS layer so flow crosses embankments.
 Downloads are windowed and cached; a re-run skips finished tiles.
-2. **Fill** — pysheds `fill\_depressions` (priority-flood) and
-`resolve\_flats` (both Barnes et al., 2014) on the mosaic of all tiles,
+2. **Fill** — pysheds `fill_depressions` (priority-flood) and
+`resolve_flats` (both Barnes et al., 2014) on the mosaic of all tiles,
 cropped back to each tile's grid. Outputs are float64 on purpose:
 float32 collapses the flat-resolution gradients and silently
 un-conditions the DEM (stage 3 verifies drainage and stops if so).
