@@ -58,19 +58,19 @@ descriptions and tags document their encoding:
 
 The tuning knobs are constants at the top of the script:
 
-    DEFAULT_MIN_AREA_KM2    minimum catchment (contributing) area that
+    UPA_MIN                 minimum catchment (contributing) area that
                             starts a stream - edit it to taste, or
-                            override a single run with --area
+                            override a single run with --upa-min
     DEFAULT_METHODS         which algorithms run when --fdir is not
                             given (just "d8" out of the box)
 
 USAGE
     python 03_flow_router.py                  # D8 only (the default)
-    python 03_flow_router.py --area 0.5       # override the stream threshold
+    python 03_flow_router.py --upa-min 0.5    # override the stream threshold
     python 03_flow_router.py --fdir all       # run all four algorithms
     python 03_flow_router.py --fdir d8 dinf   # ... or a chosen subset
     python 03_flow_router.py --describe       # print the algorithm definitions
-    python 03_flow_router.py --dem a.tif b.tif --out results
+    python 03_flow_router.py --dem a.tif b.tif --outputs-dir results
 
 COMPANION MODULES
     The unnumbered modules next to this script are part of it: mdinf.py
@@ -198,8 +198,8 @@ from pipeline_io import (
 )
 
 # Minimum catchment (contributing) area that defines a stream, in km2.
-# The one tuning knob: edit it here, or override per run with --area.
-DEFAULT_MIN_AREA_KM2 = 1
+# The one tuning knob: edit it here, or override per run with --upa-min.
+UPA_MIN = 1
 
 # Which algorithms run when --fdir is not given. D8 alone is the default:
 # it is the format the downstream stages (04, 05, 06) consume. Each
@@ -573,15 +573,18 @@ def main(argv=None):
                     "comparison table (CSV).",
     )
     parser.add_argument("--dem", nargs="+", default=None, metavar="TIF",
-                        help="DEM GeoTIFF tile(s) (default: every .tif in "
-                             "./data/02_filled)")
-    parser.add_argument("--out", default=None,
-                        help="output folder (default: ./data/03_flows next "
-                             "to this script)")
-    parser.add_argument("--area", type=float, default=DEFAULT_MIN_AREA_KM2,
+                        help="DEM GeoTIFF tile(s) (default: all in "
+                             "--inputs-dir)")
+    parser.add_argument("--inputs-dir", type=Path,
+                        default=Path(__file__).resolve().parent
+                        / "data" / "02_filled")
+    parser.add_argument("--outputs-dir", type=Path,
+                        default=Path(__file__).resolve().parent
+                        / "data" / "03_flows")
+    parser.add_argument("--upa-min", type=float, default=UPA_MIN,
                         metavar="KM2",
                         help=f"minimum catchment area defining a stream, in km2 "
-                             f"(default {DEFAULT_MIN_AREA_KM2:g})")
+                             f"(default {UPA_MIN:g})")
     parser.add_argument("--fdir", nargs="+", default=None,
                         choices=list(ALGORITHMS) + ["all"], metavar="ALG",
                         help="which flow-routing algorithms to run "
@@ -598,10 +601,9 @@ def main(argv=None):
         return 0
 
     started = time.perf_counter()
-    script_dir = Path(__file__).resolve().parent
 
     # ------------------------------------------------- 1. stream definition
-    min_area_km2 = args.area
+    min_area_km2 = args.upa_min
     if min_area_km2 <= 0:
         sys.exit("The catchment area must be positive.")
     if args.fdir and "all" in args.fdir:
@@ -612,10 +614,10 @@ def main(argv=None):
         selected = [k for k in ALGORITHMS if k in DEFAULT_METHODS]
 
     # -------------------------------------------- 2. DEM tiles in, mosaicked
-    dem_paths = find_dems(args.dem, script_dir / "data" / "02_filled")
+    dem_paths = find_dems(args.dem, args.inputs_dir)
     validate_tiles(dem_paths)
     provenance = collect_provenance(dem_paths)
-    out_dir = Path(args.out) if args.out else script_dir / "data" / "03_flows"
+    out_dir = args.outputs_dir
     work_dir = out_dir / "_work"
     out_dir.mkdir(parents=True, exist_ok=True)
 

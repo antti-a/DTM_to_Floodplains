@@ -27,9 +27,10 @@ USAGE (inside the ``water`` conda environment)
     python 00_run_pipeline.py --from route        # resume after an earlier run
     python 00_run_pipeline.py --only fill route   # just these stages
     python 00_run_pipeline.py --skip hand         # everything else
-    python 00_run_pipeline.py --area 0.5          # stream threshold, km2 (route;
-                                               #   hand/floodplains have their
-                                               #   own --upa-min)
+    python 00_run_pipeline.py --upa-min 0.5       # stream threshold, km2
+                                               #   (forwarded to route only;
+                                               #   hand/floodplains keep their
+                                               #   own defaults)
 """
 
 from __future__ import annotations
@@ -51,7 +52,8 @@ def stage_commands(args) -> dict[str, list[str]]:
     return {
         "carve": [py, str(HERE / "01_carve_dem.py")],
         "fill": [py, str(HERE / "02_fill_dem.py")],
-        "route": [py, str(HERE / "03_flow_router.py"), "--area", str(args.area)],
+        "route": [py, str(HERE / "03_flow_router.py"),
+                  "--upa-min", str(args.upa_min)],
         "accumulation": [py, str(HERE / "04_flow_accumulation.py")],
         # hand/floodplains read stage 4's D8 accumulation; no flags passed,
         # so they run on their USER SETTINGS defaults (--upa-min 0.2 etc.)
@@ -70,10 +72,11 @@ def main(argv=None) -> int:
                     help="start from this stage instead of 'carve'")
     ap.add_argument("--skip", nargs="+", default=[], choices=STAGES,
                     metavar="STAGE", help="leave these stages out")
-    ap.add_argument("--area", type=float, default=1.0, metavar="KM2",
-                    help="minimum contributing area defining a stream, used "
-                         "by route (default 1.0); hand and floodplains have "
-                         "their own --upa-min instead")
+    ap.add_argument("--upa-min", type=float, default=1.0, metavar="KM2",
+                    help="minimum contributing area defining a stream, "
+                         "forwarded to route only (default 1.0); hand and "
+                         "floodplains keep their own default (0.2) - run "
+                         "them standalone to change it")
     args = ap.parse_args(argv)
 
     if args.only:

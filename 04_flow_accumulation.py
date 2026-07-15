@@ -75,7 +75,7 @@ Credits
 Usage
 -----
     python 04_flow_accumulation.py                      # all rasters in data/03_flows
-    python 04_flow_accumulation.py data/03_flows/flow_direction_d8.tif [more ...]
+    python 04_flow_accumulation.py --rasters data/03_flows/flow_direction_d8.tif [more ...]
     python 04_flow_accumulation.py --units cells        # counts instead of m2
 
 Run inside the ``water`` conda environment:
@@ -326,7 +326,7 @@ def main(argv=None) -> int:
         description="Compute flow accumulation from D8 / MFD / D-infinity / "
                     "MD-infinity flow-direction rasters.")
     parser.add_argument(
-        "rasters", nargs="*", type=Path,
+        "--rasters", nargs="+", type=Path, default=None, metavar="TIF",
         help="flow-direction GeoTIFFs (default: all flow_direction_*.tif "
              "in --inputs-dir)")
     parser.add_argument(
