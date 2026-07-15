@@ -15,12 +15,12 @@ parametrized step; choosing `a` and `b` is left to the application.
 
 
 
-The six stage scripts are numbered in pipeline order (`01\_` … `06\_`) and
+The six stage scripts are numbered in pipeline order (`01_` … `06_`) and
 share one `data/` tree: each stage's output is already the next stage's
-default input, and `00\_run\_pipeline.py` runs them in order. Each stage is
+default input, and `00_run_pipeline.py` runs them in order. Each stage is
 also a standalone command-line script, so any stage can be re-run alone
 with different parameters. The three unnumbered files are companion modules
-(`pipeline\_io.py`, `accumulation.py`, `mdinf.py`) imported by the stages.
+(`pipeline_io.py`, `accumulation.py`, `mdinf.py`) imported by the stages.
 
 ## Quick start
 
@@ -30,7 +30,7 @@ cd DTM_to_Floodplains
 conda env create -f environment.yml
 conda activate water
 # drop your DTM tiles (GeoTIFF) into data/00_source_dems/
-python 00\_run\_pipeline.py
+python 00_run_pipeline.py
 ```
 
 The result is `data/06_floodplains/floodplains.tif` (1 = floodplain,
@@ -89,7 +89,7 @@ python 03_flow_router.py --fdir all
 |`03_flow_router.py`|`--area KM2`|minimum contributing area defining a stream in the vector network (1.0)|
 |`03_flow_router.py`|`--fdir d8 mfd dinf mdinf` / `all`|routing algorithms to run (d8)|
 |`04_flow_accumulation.py`|`--units m2/cells`|accumulation in square metres (m2) or cell counts|
-|`05_hand.py`, `06\_floodplains.py`|`--upa-min KM2`|stream-initiation threshold (0.2)|
+|`05_hand.py`, `06_floodplains.py`|`--upa-min KM2`|stream-initiation threshold (0.2)|
 |`06_floodplains.py`|`--a`, `--b`|GFPLAIN power law `h = a·A^b` (0.63, 0.3)|
 
 `python <script> --help` lists everything, including flags that repoint the
