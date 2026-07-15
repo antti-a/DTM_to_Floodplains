@@ -138,6 +138,8 @@ run on Finnish KM2 data produces EPSG:3067 rasters.
 If the culvert-carving stage is skipped for other areas, the later stages
 accept any single projected, metre-based CRS shared by all tiles.
 
+Every stage stamps its outputs with self-documenting GeoTIFF dataset tags.
+
 ## Credits
 
 The beginning of the pipeline follows Rolim da Paz (2025): The condition-route-accumulate
