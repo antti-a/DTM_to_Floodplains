@@ -70,8 +70,8 @@ python 05_hand.py --upa-min 0.1
 python 06_floodplains.py --upa-min 0.1
 ```
 
-Compare d8, mfd, dinf and mdinf flow routing algorithms (not needed for
-floodplains, but not widely available elsewhere): Route with all four
+Compare D8, MFD, Dinf and MDinf flow routing algorithms (not needed for
+floodplains, but interesting and not widely available elsewhere): Route with all four
 algorithms and get each one's stream network (GeoJSON), flow-direction
 raster and a comparison table (stream cells, Jaccard overlaps, drainage
 density):
@@ -108,7 +108,7 @@ values are simply the defaults a no-argument run uses.
 |5|`05_hand.py`|`data/02_filled/` + `data/03_flows/flow_direction_d8.tif` + `data/04_accumulation/flow_accumulation_d8.tif`|`data/05_hand/`|
 |6|`06_floodplains.py`|same as stage 5|`data/06_floodplains/`|
 
-1. **Carve** — lowers the DEM at culverts and road crossings with the SYKE
+1. **Carve** — lowers the DTM at culverts and road crossings with the SYKE
 "Tierumpujen uomakorjaus" WCS layer so flow crosses embankments.
 Downloads are windowed and cached; a re-run skips finished tiles.
 2. **Fill** — pysheds `fill_depressions` (priority-flood) and
@@ -117,19 +117,18 @@ cropped back to each tile's grid. Outputs are float64 on purpose:
 float32 collapses the flat-resolution gradients and silently
 un-conditions the DEM (stage 3 verifies drainage and stops if so).
 3. **Route** — mosaics the filled tiles and routes flow: D8 by default
-(O'Callaghan and Mark, 1984) — the format every later stage consumes —
+(O'Callaghan and Mark, 1984) as that is the format every later stage consumes.
 with MFD, Dinf and MDinf available via `--fdir` for comparison, each
 with its own network, comparison-table row and direction raster.
 4. **Accumulate** — weighted flow accumulation (upstream contributing
 area) for every flow-direction raster found.
-5. **HAND** — height above nearest drain (Nobre et al., 2016): each cell's
-elevation above the stream cell it drains to along the D8 flow path,
-with streams defined by the `--upa-min` threshold. D8 only by design:
-the propagation needs exactly one downstream cell per cell.
-6. **Floodplains** — GFPLAIN (Nardi et al., 2019): every stream cell
-carries the flood level `h = a·A^b` (h in m, A = upstream area in km²),
-and a cell joins the floodplain of the stream cell it drains to if it
-rises no more than `h` above it.
+5. **HAND** — height above nearest drain (Nobre et al., 2016): Each pixel's
+elevation above the stream pixel it drains to along the D8 flow path,
+with streams defined by the `--upa-min` threshold.
+6. **Floodplains** — GFPLAIN (Nardi et al., 2019): Every stream pixel
+carries a flood level `h = a·A^b` (h in m, A = upstream area in km²):
+A ground pixel belongs to the floodplain of a stream pixel it drains to if it
+rises no more than `h` meters above it.
 
 ## Outputs and metadata
 
