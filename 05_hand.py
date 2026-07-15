@@ -50,9 +50,11 @@ pit/edge without meeting a stream.
 
 Spatial reference
 -----------------
-* Horizontal: EPSG:3067 (ETRS89 / TM35FIN), units metres, 2 m pixels.
-* Vertical: N2000, units metres (HAND is a height difference in the same
-  vertical datum as the source DEM).
+* The output inherits the grid and CRS of the input DEM (EPSG:3067 /
+  TM35FIN, 2 m pixels, when the source is Finnish KM2 data). The km2
+  stream threshold assumes a projected CRS with metre units.
+* HAND is a height difference in the vertical datum of the source DEM
+  (N2000 for KM2); any single consistent metric datum works.
 
 Credits
 -------
@@ -252,8 +254,6 @@ def main(argv=None) -> int:
             source_data_credit=(SOURCE_DATA_CREDIT_KNOWN
                                 if "dem_source_tiles" in forwarded
                                 else SOURCE_DATA_CREDIT_PRESUMED),
-            horizontal_crs="EPSG:3067 (ETRS89 / TM35FIN), units metres",
-            vertical_datum="N2000, units metres (datum of the source DEM)",
             software_credits=TOOL_CREDITS_PYFLWDIR,
             generated_by="05_hand.py",
             **forwarded,

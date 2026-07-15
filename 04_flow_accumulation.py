@@ -50,10 +50,10 @@ pixel``). NoData is NaN.
 
 Spatial reference
 -----------------
-* Horizontal: EPSG:3067 (ETRS89 / TM35FIN), units metres, 2 m pixels.
-* Vertical datum of the source elevation data: N2000, units metres.
-  (Flow accumulation itself carries no height values; the datum is recorded
-  in the output metadata for provenance.)
+* The output inherits the grid and CRS of the input flow-direction raster
+  (EPSG:3067 / TM35FIN, 2 m pixels, when the source is Finnish KM2 data).
+* The m2 unit takes the pixel area from the grid transform, which assumes
+  a projected CRS with metre units.
 
 Credits
 -------
@@ -255,8 +255,10 @@ def process(path: Path, out_dir: Path, units: str) -> Path:
     with rasterio.open(path) as src:
         method = detect_method(path, src.tags())
         print(f"\n{path.name}: {method.name}")
-        if src.crs is None or src.crs.to_epsg() != 3067:
-            print(f"  WARNING: expected EPSG:3067, raster reports {src.crs}")
+        if src.crs is None or not src.crs.is_projected:
+            print(f"  WARNING: the m2 unit takes pixel areas from the grid "
+                  f"transform and assumes a projected metre-based CRS; "
+                  f"raster reports {src.crs}")
         transform = src.transform
         pixel_area_m2 = abs(transform.a * transform.e)
         source_tags = src.tags()
@@ -310,8 +312,6 @@ def process(path: Path, out_dir: Path, units: str) -> Path:
             source_data_credit=(SOURCE_DATA_CREDIT_KNOWN
                                 if "dem_source_tiles" in forwarded
                                 else SOURCE_DATA_CREDIT),
-            horizontal_crs="EPSG:3067 (ETRS89 / TM35FIN), units metres",
-            vertical_datum="N2000, units metres (datum of the source DEM)",
             software_credits=TOOL_CREDITS,
             generated_by="04_flow_accumulation.py",
             **forwarded,

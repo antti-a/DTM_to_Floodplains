@@ -405,8 +405,6 @@ def carve_dem(
             dem_source_tiles=dem_path.name,
             dem_carve="syke_culvert_min",
             source_data_credit=SOURCE_DATA_CREDIT,
-            horizontal_crs="EPSG:3067 (ETRS89 / TM35FIN), units metres",
-            vertical_datum="N2000, units metres (datum of the source DEM)",
             generated_by="01_carve_dem.py",
         ),
     )

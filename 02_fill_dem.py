@@ -433,8 +433,6 @@ def crop_back(
             source_data_credit=(SOURCE_DATA_CREDIT
                                 if "dem_source_tiles" in forwarded
                                 else SOURCE_DATA_CREDIT_PRESUMED),
-            horizontal_crs="EPSG:3067 (ETRS89 / TM35FIN), units metres",
-            vertical_datum="N2000, units metres (datum of the source DEM)",
             generated_by="02_fill_dem.py",
             **forwarded,
         ),

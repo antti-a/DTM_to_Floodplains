@@ -131,12 +131,12 @@ rises no more than `h` metres above it.
 
 ## Outputs and metadata
 
-All rasters are GeoTIFFs in EPSG:3067 (ETRS89 / TM35FIN, metres), vertical
-datum N2000. Every output documents its own encoding in its GeoTIFF band
-descriptions and dataset tags (`gdalinfo <file>` or
-`rasterio.open(...).tags()`), so the formats are not duplicated here. The
-tags also carry full provenance: Source DEM tiles, algorithms and
-parameters, stamped at the originating stage and forwarded downstream.
+All rasters are GeoTIFFs on the grid and coordinate reference system of the
+input DTM tiles; nothing is reprojected. Stage 1 requires EPSG:3067
+(ETRS89 / TM35FIN) because the SYKE culvert layer ships in it, so a full
+run on Finnish KM2 data produces EPSG:3067 rasters.
+If the culvert-carving stage is skipped for other areas, the later stages
+accept any single projected, metre-based CRS shared by all tiles.
 
 ## Credits
 
