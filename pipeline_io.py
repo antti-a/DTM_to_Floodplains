@@ -292,7 +292,7 @@ def load_uparea(uparea_path, transform, shape, crs, routing_alg=None):
                   f"{routing_alg}; recording {routing_alg}")
     if units.startswith("m2"):
         factor = 1e-6
-    elif units.startswith(("pixels", "cells")):  # "cells": pre-rename rasters
+    elif units.startswith(("pixel", "cells")):  # "cells": pre-rename rasters
         factor = abs(transform.a * transform.e) / 1e6
     else:
         sys.exit(f"{uparea_path}: cannot tell m2 from pixel counts - the "

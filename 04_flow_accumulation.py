@@ -46,7 +46,7 @@ Output
 ``data/04_accumulation/flow_accumulation_<method>.tif`` - float32, deflate-compressed
 GeoTIFF. Values are the upslope contributing area **including the pixel
 itself**, either in square metres (default) or in pixel counts (``--units
-pixels``). NoData is NaN.
+pixel``). NoData is NaN.
 
 Spatial reference
 -----------------
@@ -76,7 +76,7 @@ Usage
 -----
     python 04_flow_accumulation.py                      # all rasters in data/03_flows
     python 04_flow_accumulation.py --rasters data/03_flows/flow_direction_d8.tif [more ...]
-    python 04_flow_accumulation.py --units pixels        # counts instead of m2
+    python 04_flow_accumulation.py --units pixel         # counts instead of m2
 
 Run inside the ``water`` conda environment:
     conda activate water
@@ -336,7 +336,7 @@ def main(argv=None) -> int:
         "--outputs-dir", type=Path,
         default=Path(__file__).parent / "data" / "04_accumulation")
     parser.add_argument(
-        "--units", choices=("m2", "pixels"), default="m2",
+        "--units", choices=("m2", "pixel"), default="m2",
         help="output as contributing area in m2 (default) or as pixel counts")
     args = parser.parse_args(argv)
 
