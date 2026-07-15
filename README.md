@@ -10,7 +10,7 @@ modelling is done. The pipeline is built for Finnish data provided by the Nation
 DTM is first carved with SYKE's culvert-correction raster so that flow crosses
 road embankments instead of ponding behind them. Carved DTM is then conditioned for hydrological calculations by filling depressions and pits to ensure that every pixel drains out of the modelled area. Flow routing and accumulation are then calculated to be used by HAND and floodplain calculations. The pipeline can be modified
 to work in other areas by swapping or skipping the culvert-carving stage which at the moment is specific to data available for Finland.
-The floodplain delineation (`h = a·A^b`) is the pipeline's only parametrized step. `a` sets the overall magnitude of `h`; `b` sets how fast `h` grows as drainage area grows. Suitable values depend on the intended use.
+The floodplain delineation (`h = a·A^b`) is the pipeline's only parametrized step. Suitable values of `a` and `b` depend on the intended use.
 
 
 The six stage scripts are numbered in pipeline order (`01_` … `06_`) and
@@ -52,7 +52,8 @@ python 00_run_pipeline.py --skip hand
 ```
 
 Adjust the floodplain parameters: The flood level `h = a·A^b` is the
-only parametrized step. How to choose `a` and `b` depends on the application.
+only parametrized step. `a` sets the overall magnitude of `h`; `b` sets how fast `h` grows as drainage area grows. Suitable values depend on the intended use.
+
 
 For example:
 
@@ -102,7 +103,7 @@ values are simply the defaults a no-argument run uses.
 |1|`01_carve_dem.py`|`data/00_source_dems/`|`data/01_carved/` (+ `data/culvert_cache/`)|
 |2|`02_fill_dem.py`|`data/01_carved/`|`data/02_filled/`|
 |3|`03_flow_router.py`|`data/02_filled/`|`data/03_flows/`|
-|4|`04_flow_accumulation.py`|`data/03_flows/flow_direction_\*.tif`|`data/04_accumulation/`|
+|4|`04_flow_accumulation.py`|`data/03_flows/flow_direction_*.tif`|`data/04_accumulation/`|
 |5|`05_hand.py`|`data/02_filled/` + `data/03_flows/flow_direction_d8.tif` + `data/04_accumulation/flow_accumulation_d8.tif`|`data/05_hand/`|
 |6|`06_floodplains.py`|same as stage 5|`data/06_floodplains/`|
 
@@ -116,7 +117,7 @@ float32 collapses the flat-resolution gradients and silently
 un-conditions the DEM (stage 3 verifies drainage and stops if so).
 3. **Route** — mosaics the filled tiles and routes flow: D8 by default
 (O'Callaghan and Mark, 1984) as that is the format every later stage consumes.
-with MFD, Dinf and MDinf available via `--fdir` for comparison, each
+MFD, Dinf and MDinf available via `--fdir` for comparison, each
 with its own network, comparison-table row and direction raster.
 4. **Accumulate** — weighted flow accumulation (upstream contributing
 area) for every flow-direction raster found.
@@ -144,7 +145,7 @@ workflow of stages 1–4, and then the pyflwdir library (Eilander et al., 2021;
 https://github.com/Deltares/pyflwdir) in stages 5–6 creates HAND after Nobre et al. (2016), and GFPLAIN after
 Nardi et al. (2019) with the coefficient `a` made an explicit parameter.
 
-Other essential tools for this projects are: pysheds (D8/MFD/Dinf routing; stage 2 depression
+Other essential tools for this project are: pysheds (D8/MFD/Dinf routing; stage 2 depression
 filling and flat resolution after Barnes, Lehman and Mulla, 2014),
 rasterio/GDAL, NumPy and Numba. The MDinf direction mathematics in
 `mdinf.py` follow Seibert and McGlynn (2007), ported via WhiteboxTools'
