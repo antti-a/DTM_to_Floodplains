@@ -84,11 +84,11 @@ python 03_flow_router.py --fdir all
 |script|flag|meaning (default)|
 |-|-|-|
 |`00_run_pipeline.py`|`--from`, `--only`, `--skip`|which stages to run|
-|`00_run_pipeline.py`|`--upa-min KM2`|forwarded to stages 3, 5 and 6 (0.2)|
-|`03_flow_router.py`|`--upa-min KM2`|minimum contributing area defining a stream in the vector network (0.2)|
-|`03_flow_router.py`|`--fdir d8 mfd dinf mdinf` / `all`|routing algorithms to run (d8)|
-|`04_flow_accumulation.py`|`--units m2/cells`|accumulation in square metres (m2) or cell counts|
-|`05_hand.py`, `06_floodplains.py`|`--upa-min KM2`|stream-initiation threshold (0.2)|
+|`00_run_pipeline.py`|`--upa-min KM2`|minimum contributing area defining a stream in km^2 (0.2)|
+|`03_flow_router.py`|`--upa-min KM2`|minimum contributing area defining a stream in km^2 (0.2)|
+|`03_flow_router.py`|`--fdir d8 mfd dinf mdinf` / `all`|which routing algorithms to run (d8)|
+|`04_flow_accumulation.py`|`--units m2/pixel`|accumulation in square metres (m2) or pixel counts|
+|`05_hand.py`, `06_floodplains.py`|`--upa-min KM2`|minimum contributing area defining a stream in km^2 (0.2)|
 |`06_floodplains.py`|`--a`, `--b`|GFPLAIN power law `h = a·A^b` (0.63, 0.3)|
 
 `python <script> --help` lists everything, including flags that repoint the
