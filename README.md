@@ -84,7 +84,7 @@ python 03_flow_router.py --fdir all
 |script|flag|meaning (default)|
 |-|-|-|
 |`00_run_pipeline.py`|`--from`, `--only`, `--skip`|which stages to run|
-|`00_run_pipeline.py`|`--upa-min KM2`|forwarded to stages 3, 5 and 6 (0.2, shared `UPA_MIN` in `pipeline_io.py`)|
+|`00_run_pipeline.py`|`--upa-min KM2`|forwarded to stages 3, 5 and 6 (0.2)|
 |`03_flow_router.py`|`--upa-min KM2`|minimum contributing area defining a stream in the vector network (0.2)|
 |`03_flow_router.py`|`--fdir d8 mfd dinf mdinf` / `all`|routing algorithms to run (d8)|
 |`04_flow_accumulation.py`|`--units m2/cells`|accumulation in square metres (m2) or cell counts|
