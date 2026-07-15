@@ -5,13 +5,10 @@ above nearest drain (HAND; Nobre et al., 2016) directly from Finland's
 national 2 m elevation model (KM2). This is terrain analysis only, no hydraulic
 modelling is done. The pipeline is built for Finnish data provided by the National Land Survey (NLS) and the Environment Institute (SYKE). 
 
-
-
 DTM is first carved with SYKE's culvert-correction raster so that flow crosses
 road embankments instead of ponding behind them. Carved DTM is then conditioned for hydrological calculations by filling depressions and pits to ensure that every pixel drains out of the modelled area. Flow routing and accumulation are then calculated to be used by HAND and floodplain calculations. The pipeline can be modified
 to work in other areas by swapping or skipping the culvert-carving stage which at the moment is specific to data available for Finland.
 The floodplain delineation (`h = a·A^b`) is the pipeline's only parametrized step. Suitable values of `a` and `b` depend on the intended use.
-
 
 The six stage scripts are numbered in pipeline order (`01_` … `06_`) and
 share one `data/` tree: each stage's output is already the next stage's
@@ -84,11 +81,11 @@ python 03_flow_router.py --fdir all
 |script|flag|meaning (default)|
 |-|-|-|
 |`00_run_pipeline.py`|`--from`, `--only`, `--skip`|which stages to run|
-|`00_run_pipeline.py`|`--upa-min KM2`|minimum contributing area defining a stream in km^2 (0.2)|
-|`03_flow_router.py`|`--upa-min KM2`|minimum contributing area defining a stream in km^2 (0.2)|
+|`00_run_pipeline.py`|`--upa-min KM2`|minimum contributing area defining a stream in km² (0.2)|
+|`03_flow_router.py`|`--upa-min KM2`|minimum contributing area defining a stream in km² (0.2)|
 |`03_flow_router.py`|`--fdir d8 mfd dinf mdinf` / `all`|which routing algorithms to run (d8)|
 |`04_flow_accumulation.py`|`--units m2/pixel`|accumulation in square metres (m2) or pixel counts|
-|`05_hand.py`, `06_floodplains.py`|`--upa-min KM2`|minimum contributing area defining a stream in km^2 (0.2)|
+|`05_hand.py`, `06_floodplains.py`|`--upa-min KM2`|minimum contributing area defining a stream in km² (0.2)|
 |`06_floodplains.py`|`--a`, `--b`|GFPLAIN power law `h = a·A^b` (0.63, 0.3)|
 
 `python <script> --help` lists everything, including flags that repoint the
@@ -138,7 +135,7 @@ run on Finnish KM2 data produces EPSG:3067 rasters.
 If the culvert-carving stage is skipped for other areas, the later stages
 accept any single projected, metre-based CRS shared by all tiles.
 
-Every stage stamps its outputs with self-documenting GeoTIFF dataset tags.
+Every stage stamps its outputs with self-documenting GeoTIFF dataset tags, readable with `gdalinfo <file>` or `rasterio.open(...).tags()`.
 
 ## Credits
 
