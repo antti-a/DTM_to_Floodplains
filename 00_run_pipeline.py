@@ -27,10 +27,10 @@ USAGE (inside the ``water`` conda environment)
     python 00_run_pipeline.py --from route        # resume after an earlier run
     python 00_run_pipeline.py --only fill route   # just these stages
     python 00_run_pipeline.py --skip hand         # everything else
-    python 00_run_pipeline.py --upa-min 0.5       # stream threshold, km2
-                                               #   (forwarded to route only;
-                                               #   hand/floodplains keep their
-                                               #   own defaults)
+    python 00_run_pipeline.py --upa-min 0.5       # stream threshold, km2,
+                                               #   forwarded to route, hand
+                                               #   and floodplains (default:
+                                               #   UPA_MIN in pipeline_io.py)
 """
 
 from __future__ import annotations
@@ -49,16 +49,17 @@ STAGES = ("carve", "fill", "route", "accumulation", "hand", "floodplains")
 
 def stage_commands(args) -> dict[str, list[str]]:
     py = sys.executable
+    # Stages 3, 5 and 6 share one stream threshold (UPA_MIN in pipeline_io.py);
+    # only an explicit --upa-min is forwarded, so a no-flag pipeline run equals
+    # no-flag standalone runs.
+    upa = [] if args.upa_min is None else ["--upa-min", str(args.upa_min)]
     return {
         "carve": [py, str(HERE / "01_carve_dem.py")],
         "fill": [py, str(HERE / "02_fill_dem.py")],
-        "route": [py, str(HERE / "03_flow_router.py"),
-                  "--upa-min", str(args.upa_min)],
+        "route": [py, str(HERE / "03_flow_router.py"), *upa],
         "accumulation": [py, str(HERE / "04_flow_accumulation.py")],
-        # hand/floodplains read stage 4's D8 accumulation; no flags passed,
-        # so they run on their USER SETTINGS defaults (--upa-min 0.2 etc.)
-        "hand": [py, str(HERE / "05_hand.py")],
-        "floodplains": [py, str(HERE / "06_floodplains.py")],
+        "hand": [py, str(HERE / "05_hand.py"), *upa],
+        "floodplains": [py, str(HERE / "06_floodplains.py"), *upa],
     }
 
 
@@ -72,11 +73,11 @@ def main(argv=None) -> int:
                     help="start from this stage instead of 'carve'")
     ap.add_argument("--skip", nargs="+", default=[], choices=STAGES,
                     metavar="STAGE", help="leave these stages out")
-    ap.add_argument("--upa-min", type=float, default=1.0, metavar="KM2",
+    ap.add_argument("--upa-min", type=float, default=None, metavar="KM2",
                     help="minimum contributing area defining a stream, "
-                         "forwarded to route only (default 1.0); hand and "
-                         "floodplains keep their own default (0.2) - run "
-                         "them standalone to change it")
+                         "forwarded to route, hand and floodplains "
+                         "(default: the shared UPA_MIN in pipeline_io.py, "
+                         "0.2)")
     args = ap.parse_args(argv)
 
     if args.only:

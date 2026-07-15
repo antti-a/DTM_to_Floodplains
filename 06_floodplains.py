@@ -92,8 +92,8 @@ UPAREA_RASTER = "data/04_accumulation/flow_accumulation_d8.tif"
                         # D8 flow accumulation (04_flow_accumulation.py
                         # output); its m2/cells units tag is honoured
 
-UPA_MIN = 0.2           # km2; stream-initiation threshold - cells with at
-                        # least this much upstream area are stream cells
+# The stream-initiation threshold (--upa-min default) is the shared
+# UPA_MIN constant in pipeline_io.py, common to stages 3, 5 and 6.
 
 # GFPLAIN power law h = a * A**b (h in m, A in km2): calibrate `a` (and, if
 # needed, `b`) against observed/modelled flood extents; the literature value
@@ -113,9 +113,9 @@ from numba import njit
 
 from pipeline_io import (
     NODATA, SOURCE_DATA_CREDIT_KNOWN, SOURCE_DATA_CREDIT_PRESUMED,
-    TOOL_CREDITS_PYFLWDIR, build_flwdir, build_mosaic, collect_provenance,
-    find_dems, load_d8, load_uparea, resolve_near, validate_tiles,
-    write_raster,
+    TOOL_CREDITS_PYFLWDIR, UPA_MIN, build_flwdir, build_mosaic,
+    collect_provenance, find_dems, load_d8, load_uparea, resolve_near,
+    validate_tiles, write_raster,
 )
 
 HERE = Path(__file__).resolve().parent

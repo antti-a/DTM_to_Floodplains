@@ -59,8 +59,9 @@ descriptions and tags document their encoding:
 The tuning knobs are constants at the top of the script:
 
     UPA_MIN                 minimum catchment (contributing) area that
-                            starts a stream - edit it to taste, or
-                            override a single run with --upa-min
+                            starts a stream - shared with stages 5-6,
+                            edit it in pipeline_io.py or override a
+                            single run with --upa-min
     DEFAULT_METHODS         which algorithms run when --fdir is not
                             given (just "d8" out of the box)
 
@@ -194,12 +195,8 @@ from pysheds.grid import Grid
 from accumulation import DROW, DCOL, accumulate
 from mdinf import mdinf_flowdir
 from pipeline_io import (
-    collect_provenance, find_dems, swap_in, validate_tiles,
+    UPA_MIN, collect_provenance, find_dems, swap_in, validate_tiles,
 )
-
-# Minimum catchment (contributing) area that defines a stream, in km2.
-# The one tuning knob: edit it here, or override per run with --upa-min.
-UPA_MIN = 1
 
 # Which algorithms run when --fdir is not given. D8 alone is the default:
 # it is the format the downstream stages (04, 05, 06) consume. Each

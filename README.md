@@ -84,8 +84,8 @@ python 03_flow_router.py --fdir all
 |script|flag|meaning (default)|
 |-|-|-|
 |`00_run_pipeline.py`|`--from`, `--only`, `--skip`|which stages to run|
-|`00_run_pipeline.py`|`--upa-min KM2`|forwarded to stage 3 (1.0)|
-|`03_flow_router.py`|`--upa-min KM2`|minimum contributing area defining a stream in the vector network (1.0)|
+|`00_run_pipeline.py`|`--upa-min KM2`|forwarded to stages 3, 5 and 6 (0.2, shared `UPA_MIN` in `pipeline_io.py`)|
+|`03_flow_router.py`|`--upa-min KM2`|minimum contributing area defining a stream in the vector network (0.2)|
 |`03_flow_router.py`|`--fdir d8 mfd dinf mdinf` / `all`|routing algorithms to run (d8)|
 |`04_flow_accumulation.py`|`--units m2/cells`|accumulation in square metres (m2) or cell counts|
 |`05_hand.py`, `06_floodplains.py`|`--upa-min KM2`|stream-initiation threshold (0.2)|
@@ -127,7 +127,7 @@ with streams defined by the `--upa-min` threshold.
 6. **Floodplains** — GFPLAIN (Nardi et al., 2019): Every stream pixel
 carries a flood level `h = a·A^b` (h in m, A = upstream area in km²):
 A ground pixel belongs to the floodplain of a stream pixel it drains to if it
-rises no more than `h` meters above it.
+rises no more than `h` metres above it.
 
 ## Outputs and metadata
 
