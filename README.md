@@ -3,14 +3,17 @@
 The pipeline produces rasters of geomorphic floodplains (GFPLAIN; Nardi et al., 2019) and height
 above nearest drain (HAND; Nobre et al., 2016) directly from Finland's
 national 2 m elevation model (KM2). This is terrain analysis only, no hydraulic
-modelling is done. The pipeline is built for Finnish data provided by National Land Survey (NLS) and Environmental Institute (SYKE). DTM is
-first carved with SYKE's culvert-correction layer so that flow crosses
-road embankments instead of ponding behind them. Carved DTM is then conditioned for hydrological calculations by filling depressions and pits to ensure that 
+modelling is done. The pipeline is built for Finnish data provided by the National Land Survey (NLS) and the Environment Institute (SYKE). 
 
-every pixel drains out of the DTM. Flow routing and accumulation are then calculated to be used by HAND and floodplain rasters. The pipeline can be modified
+
+
+DTM is first carved with SYKE's culvert-correction raster so that flow crosses
+road embankments instead of ponding behind them. Carved DTM is then conditioned for hydrological calculations by filling depressions and pits to ensure that every pixel drains out of the modelled area. Flow routing and accumulation are then calculated to be used by HAND and floodplain calculations. The pipeline can be modified
 to work in other areas by swapping or skipping the culvert-carving stage which at the moment is specific to data available for Finland.
 The floodplain delineation (`h = a·A^b`) is the pipeline's only
 parametrized step; choosing `a` and `b` is left to the application.
+
+
 
 The six stage scripts are numbered in pipeline order (`01\_` … `06\_`) and
 share one `data/` tree: each stage's output is already the next stage's
