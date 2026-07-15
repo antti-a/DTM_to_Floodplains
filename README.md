@@ -10,9 +10,7 @@ modelling is done. The pipeline is built for Finnish data provided by the Nation
 DTM is first carved with SYKE's culvert-correction raster so that flow crosses
 road embankments instead of ponding behind them. Carved DTM is then conditioned for hydrological calculations by filling depressions and pits to ensure that every pixel drains out of the modelled area. Flow routing and accumulation are then calculated to be used by HAND and floodplain calculations. The pipeline can be modified
 to work in other areas by swapping or skipping the culvert-carving stage which at the moment is specific to data available for Finland.
-The floodplain delineation (`h = a·A^b`) is the pipeline's only
-parametrized step; choosing `a` and `b` is left to the application.
-
+The floodplain delineation (`h = a·A^b`) is the pipeline's only parametrized step. `a` sets the overall magnitude of `h`; `b` sets how fast `h` grows as drainage area grows. Suitable values depend on the intended use.
 
 
 The six stage scripts are numbered in pipeline order (`01_` … `06_`) and
