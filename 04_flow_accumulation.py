@@ -15,7 +15,7 @@ corresponding flow-accumulation raster into the output folder.
 How it works
 ------------
 Every supported flow-direction format is first converted to a common
-representation: for each cell, the *fraction* of its outflow sent to each of
+representation: for each pixel, the *fraction* of its outflow sent to each of
 its 8 neighbours (band order N, NE, E, SE, S, SW, W, NW):
 
 * **D8** (O'Callaghan and Mark, 1984): the single coded receiver
@@ -33,9 +33,9 @@ its 8 neighbours (band order N, NE, E, SE, S, SW, W, NW):
 Accumulation itself is the classic upstream-area recurrence
 ``A(c) = area(c) + sum_over_donors( f(donor -> c) * A(donor) )``
 (Mark, 1988), evaluated in topological order over the weighted flow graph
-using Kahn's (1962) queue algorithm, JIT-compiled with Numba. Each cell is
-visited exactly once, so the run time is O(n cells). Flow directed at NoData
-cells or off the grid edge leaves the domain. Cells caught in a directed
+using Kahn's (1962) queue algorithm, JIT-compiled with Numba. Each pixel is
+visited exactly once, so the run time is O(n pixels). Flow directed at NoData
+pixels or off the grid edge leaves the domain. Pixels caught in a directed
 cycle (should not occur in a well-formed flow-direction raster) are reported
 and left with partial accumulation. The kernel lives in the companion
 module ``accumulation.py``, shared with 03_flow_router.py so the network
@@ -44,13 +44,13 @@ thresholded there and the rasters written here use the same arithmetic.
 Output
 ------
 ``data/04_accumulation/flow_accumulation_<method>.tif`` - float32, deflate-compressed
-GeoTIFF. Values are the upslope contributing area **including the cell
-itself**, either in square metres (default) or in cell counts (``--units
-cells``). NoData is NaN.
+GeoTIFF. Values are the upslope contributing area **including the pixel
+itself**, either in square metres (default) or in pixel counts (``--units
+pixels``). NoData is NaN.
 
 Spatial reference
 -----------------
-* Horizontal: EPSG:3067 (ETRS89 / TM35FIN), units metres, 2 m cells.
+* Horizontal: EPSG:3067 (ETRS89 / TM35FIN), units metres, 2 m pixels.
 * Vertical datum of the source elevation data: N2000, units metres.
   (Flow accumulation itself carries no height values; the datum is recorded
   in the output metadata for provenance.)
@@ -76,7 +76,7 @@ Usage
 -----
     python 04_flow_accumulation.py                      # all rasters in data/03_flows
     python 04_flow_accumulation.py --rasters data/03_flows/flow_direction_d8.tif [more ...]
-    python 04_flow_accumulation.py --units cells        # counts instead of m2
+    python 04_flow_accumulation.py --units pixels        # counts instead of m2
 
 Run inside the ``water`` conda environment:
     conda activate water
@@ -122,7 +122,7 @@ SOURCE_DATA_CREDIT = (
 
 ACCUMULATION_METHOD = (
     "Upslope contributing-area recurrence A(c) = area(c) + "
-    "sum(f(d->c) * A(d)) over donor cells d (Mark, 1988), evaluated in "
+    "sum(f(d->c) * A(d)) over donor pixels d (Mark, 1988), evaluated in "
     "topological order with Kahn's (1962) queue algorithm; single O(n) pass "
     "over the weighted 8-neighbour flow graph. Flow to NoData or off-grid "
     "is lost from the domain; flats and pits act as sinks."
@@ -211,7 +211,7 @@ def _fractions_from_bands(src) -> tuple[np.ndarray, np.ndarray]:
     frac = np.empty((src.height, src.width, 8), dtype=np.float32)
     for b in range(8):
         frac[..., b] = src.read(b + 1)
-    # A NaN band means "no flow to that neighbour"; a cell is NoData only
+    # A NaN band means "no flow to that neighbour"; a pixel is NoData only
     # when all 8 bands are NaN.
     valid = ~np.isnan(frac).all(axis=2)
     np.nan_to_num(frac, copy=False, nan=0.0)
@@ -258,28 +258,28 @@ def process(path: Path, out_dir: Path, units: str) -> Path:
         if src.crs is None or src.crs.to_epsg() != 3067:
             print(f"  WARNING: expected EPSG:3067, raster reports {src.crs}")
         transform = src.transform
-        cell_area_m2 = abs(transform.a * transform.e)
+        pixel_area_m2 = abs(transform.a * transform.e)
         source_tags = src.tags()
         profile = src.profile
         frac, valid = CONVERTERS[method.key](src)
 
-    print(f"  grid {frac.shape[1]} x {frac.shape[0]} cells, "
-          f"cell {abs(transform.a)} x {abs(transform.e)} m, "
-          f"{int(valid.sum())} valid cells")
+    print(f"  grid {frac.shape[1]} x {frac.shape[0]} pixels, "
+          f"pixel {abs(transform.a)} x {abs(transform.e)} m, "
+          f"{int(valid.sum())} valid pixels")
 
-    cell_value = cell_area_m2 if units == "m2" else 1.0
-    acc, unresolved = accumulate(frac, valid, cell_value, DROW, DCOL)
+    pixel_value = pixel_area_m2 if units == "m2" else 1.0
+    acc, unresolved = accumulate(frac, valid, pixel_value, DROW, DCOL)
     del frac
     if unresolved:
-        print(f"  WARNING: {unresolved} cells form directed cycles; "
+        print(f"  WARNING: {unresolved} pixels form directed cycles; "
               "their accumulation is incomplete")
 
     out = acc.astype(np.float32)
     out[~valid] = np.nan
-    unit_label = "m2 (upslope contributing area incl. the cell itself)" \
-        if units == "m2" else "cells (upslope cell count incl. the cell itself)"
+    unit_label = "m2 (upslope contributing area incl. the pixel itself)" \
+        if units == "m2" else "pixels (upslope pixel count incl. the pixel itself)"
     print(f"  max accumulation: {np.nanmax(out):,.0f} "
-          f"{'m2' if units == 'm2' else 'cells'}")
+          f"{'m2' if units == 'm2' else 'pixels'}")
 
     forwarded = {k: source_tags[k]
                  for k in ("dem_source_tiles", "dem_carve", "dem_fill")
@@ -336,8 +336,8 @@ def main(argv=None) -> int:
         "--outputs-dir", type=Path,
         default=Path(__file__).parent / "data" / "04_accumulation")
     parser.add_argument(
-        "--units", choices=("m2", "cells"), default="m2",
-        help="output as contributing area in m2 (default) or as cell counts")
+        "--units", choices=("m2", "pixels"), default="m2",
+        help="output as contributing area in m2 (default) or as pixel counts")
     args = parser.parse_args(argv)
 
     rasters = args.rasters or sorted(args.inputs_dir.glob("flow_direction_*.tif"))

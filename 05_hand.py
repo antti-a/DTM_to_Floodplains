@@ -11,13 +11,13 @@ Pipeline stage 5, optional (see README.md):
             data/04_accumulation/flow_accumulation_d8.tif   (04_flow_accumulation.py)
     writes  data/05_hand/hand.tif
 
-HAND (Nobre et al., 2016) is the vertical distance between a cell and the
-stream cell it drains to along the D8 flow path: the local flood-relevant
+HAND (Nobre et al., 2016) is the vertical distance between a pixel and the
+stream pixel it drains to along the D8 flow path: the local flood-relevant
 "height above the river". This stage recomputes nothing the pipeline already
 produced - the filled DEM, the D8 flow directions and the D8 flow
 accumulation are read as-is; pyflwdir is used only to turn the existing D8
-raster into a flow graph (one downstream index per cell plus a down-to-
-upstream cell ordering).
+raster into a flow graph (one downstream index per pixel plus a down-to-
+upstream pixel ordering).
 
 How it works
 ------------
@@ -27,30 +27,30 @@ How it works
 2. ``flow_direction_d8.tif`` is remapped to pyflwdir's uint8 convention
    (identical ESRI direction codes; -1 flat / -2 pit -> 0 = pit,
    0 nodata -> 247) and loaded with ``pyflwdir.from_array(ftype="d8")``.
-3. Stream (drain) cells are those whose stage-4 D8 flow accumulation,
+3. Stream (drain) pixels are those whose stage-4 D8 flow accumulation,
    converted to km2, reaches the stream-initiation threshold ``upa-min``.
-4. A Numba kernel walks the flow graph from down- to upstream: a drain cell
-   gets HAND = 0, every other cell gets its downstream neighbour's HAND plus
+4. A Numba kernel walks the flow graph from down- to upstream: a drain pixel
+   gets HAND = 0, every other pixel gets its downstream neighbour's HAND plus
    the elevation difference to it.
 
 The kernel is adapted from :func:`pyflwdir.dem.height_above_nearest_drain`
-(plain, uncompiled Python in pyflwdir <= 0.5.11, far too slow for a 36M-cell
+(plain, uncompiled Python in pyflwdir <= 0.5.11, far too slow for a 36M-pixel
 grid) with one deliberate deviation: pyflwdir assigns height-above-*pit* to
-cells whose flow path ends in a pit or at the grid edge without ever meeting
+pixels whose flow path ends in a pit or at the grid edge without ever meeting
 a drain; on a whole-DEM run that would fill every small edge catchment below
-the threshold with misleading values, so those cells are written as nodata
+the threshold with misleading values, so those pixels are written as nodata
 instead.
 
 Output
 ------
 ``data/05_hand/hand.tif`` - float32, deflate-compressed GeoTIFF. Values are
-metres above the nearest drain cell along the D8 flow path; drain cells are
-0. NoData (-9999) marks cells outside the DEM and cells that drain to a
+metres above the nearest drain pixel along the D8 flow path; drain pixels are
+0. NoData (-9999) marks pixels outside the DEM and pixels that drain to a
 pit/edge without meeting a stream.
 
 Spatial reference
 -----------------
-* Horizontal: EPSG:3067 (ETRS89 / TM35FIN), units metres, 2 m cells.
+* Horizontal: EPSG:3067 (ETRS89 / TM35FIN), units metres, 2 m pixels.
 * Vertical: N2000, units metres (HAND is a height difference in the same
   vertical datum as the source DEM).
 
@@ -91,7 +91,7 @@ D8_RASTER = "data/03_flows/flow_direction_d8.tif"
                         # D8 flow directions (03_flow_router.py output)
 UPAREA_RASTER = "data/04_accumulation/flow_accumulation_d8.tif"
                         # D8 flow accumulation (04_flow_accumulation.py
-                        # output); its m2/cells units tag is honoured
+                        # output); its m2/pixels units tag is honoured
 
 # The stream-initiation threshold (--upa-min default) is the shared
 # UPA_MIN constant in pipeline_io.py, common to stages 3, 5 and 6.
@@ -128,8 +128,8 @@ HAND_CITATION = (
 )
 
 HAND_DEVIATION = (
-    "Cells whose D8 flow path ends in a pit or at the grid edge without "
-    "meeting a drain cell are nodata (-9999); pyflwdir's "
+    "Pixels whose D8 flow path ends in a pit or at the grid edge without "
+    "meeting a drain pixel are nodata (-9999); pyflwdir's "
     "height_above_nearest_drain assigns height-above-pit there instead."
 )
 
@@ -143,10 +143,10 @@ def _hand_kernel(idxs_ds, seq, drain, elevtn):
     """Height above nearest drain, down- to upstream in one pass.
 
     Adapted from :func:`pyflwdir.dem.height_above_nearest_drain` (Nobre et
-    al., 2016). ``seq`` orders the valid cells from down- to upstream, so a
-    cell's downstream HAND is always resolved before the cell itself. One
-    deviation from pyflwdir: a cell only gets a value if it is a drain or
-    its downstream cell already has one, so paths that end in a pit or at
+    al., 2016). ``seq`` orders the valid pixels from down- to upstream, so a
+    pixel's downstream HAND is always resolved before the pixel itself. One
+    deviation from pyflwdir: a pixel only gets a value if it is a drain or
+    its downstream pixel already has one, so paths that end in a pit or at
     the grid edge without meeting a drain stay nodata instead of reporting
     height-above-pit.
     """
@@ -195,7 +195,7 @@ def main(argv=None) -> int:
                     help="D8 flow-accumulation raster "
                          "(04_flow_accumulation.py output)")
     ap.add_argument("--upa-min", type=float, default=UPA_MIN, metavar="KM2",
-                    help="stream-initiation threshold: cells with at least "
+                    help="stream-initiation threshold: pixels with at least "
                          f"this upstream area are drains (default {UPA_MIN:g})")
     args = ap.parse_args(argv)
     if args.dem is None and DEM_FILES:
@@ -210,8 +210,8 @@ def main(argv=None) -> int:
 
     elevtn, transform, crs = build_mosaic(dem_paths)
     shape = elevtn.shape
-    print(f"mosaic {shape[1]} x {shape[0]} cells, "
-          f"cell {abs(transform.a)} x {abs(transform.e)} m")
+    print(f"mosaic {shape[1]} x {shape[0]} pixels, "
+          f"pixel {abs(transform.a)} x {abs(transform.e)} m")
 
     d8u8, routing_alg = load_d8(args.d8, transform, shape, crs)
     flw = build_flwdir(d8u8, transform)
@@ -220,10 +220,10 @@ def main(argv=None) -> int:
     uparea = load_uparea(args.uparea, transform, shape, crs, routing_alg)
     drain = uparea >= np.float32(args.upa_min)
     n_drain = int(drain.sum())
-    print(f"stream cells: {n_drain} (upstream area >= {args.upa_min:g} km2, "
+    print(f"stream pixels: {n_drain} (upstream area >= {args.upa_min:g} km2, "
           f"max {float(uparea.max()):.2f} km2)")
     if n_drain == 0:
-        sys.exit(f"no cell reaches --upa-min {args.upa_min:g} km2; "
+        sys.exit(f"no pixel reaches --upa-min {args.upa_min:g} km2; "
                  f"nothing to measure HAND against")
     del uparea
 
@@ -238,13 +238,13 @@ def main(argv=None) -> int:
             title="Height above nearest drain (HAND)",
             algorithm="HAND on D8 flow paths (down- to upstream propagation "
                       "of the elevation difference to the drained stream "
-                      "cell)",
+                      "pixel)",
             citation=HAND_CITATION,
             parameters=f"upa_min={args.upa_min:g} km2 (stream-initiation "
                        f"threshold on the D8 flow accumulation)",
             flow_routing_algorithm=routing_alg,
             stream_threshold_km2=f"{args.upa_min:g}",
-            units="m above the nearest drain cell along the D8 flow path",
+            units="m above the nearest drain pixel along the D8 flow path",
             deviation=HAND_DEVIATION,
             source_dem_tiles=", ".join(p.name for p in dem_paths),
             source_flow_direction_raster=args.d8.name,
@@ -262,7 +262,7 @@ def main(argv=None) -> int:
 
     valid = hand[hand != NODATA]
     print(f"HAND median: {float(np.median(valid)):.2f} m over "
-          f"{valid.size} cells; {no_drain} cells drain to a pit/edge "
+          f"{valid.size} pixels; {no_drain} pixels drain to a pit/edge "
           f"without meeting a stream -> nodata")
     print(f"-> {out_path}  ({time.perf_counter() - t0:.1f} s)")
     return 0

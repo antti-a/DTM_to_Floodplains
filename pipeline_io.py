@@ -14,7 +14,7 @@ conventions.
 
 WHAT LIVES HERE
     find_dems           resolve DEM tile paths (CLI override, else a folder)
-    validate_tiles      require one CRS / cell size / grid lattice
+    validate_tiles      require one CRS / pixel size / grid lattice
     collect_provenance  merge the dem_* provenance tags stamped by stages 1-2
     build_mosaic        merge the tiles in memory -> (float32, transform, crs)
                         (stage 3 keeps its own on-disk float64 mosaic: pysheds
@@ -111,7 +111,7 @@ def find_dems(dem_args, dem_dir):
 
 
 def validate_tiles(paths):
-    """Require one shared CRS, cell size and grid lattice across the tiles.
+    """Require one shared CRS, pixel size and grid lattice across the tiles.
 
     The tiles are merged and processed as one surface, so a tile on a
     shifted grid or in another CRS would be silently resampled - fail
@@ -129,12 +129,12 @@ def validate_tiles(paths):
         if crs != crs0:
             sys.exit(f"{name}: CRS {crs} != {crs0} ({name0})")
         if (abs(t.a), abs(t.e)) != res0:
-            sys.exit(f"{name}: cell size {(abs(t.a), abs(t.e))} != {res0} ({name0})")
+            sys.exit(f"{name}: pixel size {(abs(t.a), abs(t.e))} != {res0} ({name0})")
         dx = (t.c - t0.c) / t.a
         dy = (t.f - t0.f) / t.e
         if abs(dx - round(dx)) > 1e-6 or abs(dy - round(dy)) > 1e-6:
             sys.exit(f"{name}: grid origin misaligned with {name0} by "
-                     f"({dx % 1:.6f}, {dy % 1:.6f}) cells")
+                     f"({dx % 1:.6f}, {dy % 1:.6f}) pixels")
 
     for i, (name_a, _, _, ba) in enumerate(infos):
         for name_b, _, _, bb in infos[i + 1:]:
@@ -266,7 +266,7 @@ def load_uparea(uparea_path, transform, shape, crs, routing_alg=None):
     """Read the stage-4 accumulation raster; return upstream area in km2.
 
     The units tag written by 04_flow_accumulation.py decides the conversion
-    (m2 or cell counts); NaN (nodata) becomes 0, which can never reach the
+    (m2 or pixel counts); NaN (nodata) becomes 0, which can never reach the
     stream threshold. When ``routing_alg`` is given, the raster's own
     ``flow_routing_algorithm`` tag is cross-checked against it (warning
     only - the flow-direction raster's tag wins).
@@ -292,10 +292,10 @@ def load_uparea(uparea_path, transform, shape, crs, routing_alg=None):
                   f"{routing_alg}; recording {routing_alg}")
     if units.startswith("m2"):
         factor = 1e-6
-    elif units.startswith("cells"):
+    elif units.startswith(("pixels", "cells")):  # "cells": pre-rename rasters
         factor = abs(transform.a * transform.e) / 1e6
     else:
-        sys.exit(f"{uparea_path}: cannot tell m2 from cell counts - the "
+        sys.exit(f"{uparea_path}: cannot tell m2 from pixel counts - the "
                  f"'units' tag is {units!r}; expected a "
                  f"04_flow_accumulation.py output")
     uparea = np.nan_to_num(acc, nan=0.0).astype(np.float32)

@@ -21,14 +21,14 @@ select more with --fdir (e.g. --fdir all). Per selected algorithm it
 writes to data/03_flows:
 
   flow_network_<alg>.geojson   the stream network
-  flow_networks_summary.csv    one row per algorithm: stream cells and
-                               area, cells unique to that algorithm,
+  flow_networks_summary.csv    one row per algorithm: stream pixels and
+                               area, pixels unique to that algorithm,
                                segment count and length, drainage
                                density, largest catchment, Jaccard
                                overlap with every other network, runtime
 
     With more than one algorithm selected the CSV is where they are
-    compared: the dispersive methods' unique cells are their braided,
+    compared: the dispersive methods' unique pixels are their braided,
     anastomosing footprint, and the Jaccard overlaps say how much any
     two networks agree. The GeoJSON lines are a D8-path approximation
     (see METHOD).
@@ -40,7 +40,7 @@ descriptions and tags document their encoding:
   flow_direction_d8.tif        one int32 band of direction codes
                                (64=N 128=NE 1=E 2=SE 4=S 8=SW 16=W 32=NW)
   flow_direction_mfd.tif       eight float32 bands: the fraction of each
-                               cell's flow sent to its N, NE, E, SE, S,
+                               pixel's flow sent to its N, NE, E, SE, S,
                                SW, W, NW neighbour
   flow_direction_dinf.tif      one float32 band: flow angle in [0, 2*pi)
                                radians counter-clockwise from east
@@ -88,19 +88,19 @@ METHOD
     one mosaic, which is routed as a single surface - a stream flowing
     off one tile continues onto the next instead of stopping at the seam.
     For every algorithm the contributing area is accumulated with that
-    algorithm's own flow partitioning; cells whose contributing area
-    reaches the threshold are that algorithm's stream cells. Those masks
+    algorithm's own flow partitioning; pixels whose contributing area
+    reaches the threshold are that algorithm's stream pixels. Those masks
     are taken exactly as the accumulation gives them, with no cleaning or
     pruning, and tabulated against each other in the summary CSV - when
     several algorithms are selected, the differences between them are
     the whole point: D8 gives a sparse
     single-threaded tree, while the dispersive methods (MFD, Dinf, MDinf)
     part around subtle highs and rejoin, so their masks carry extra,
-    unique cells (braided, anastomosing bands) that the unique-cell
+    unique pixels (braided, anastomosing bands) that the unique-pixel
     counts and Jaccard overlaps expose. For the GeoJSON each mask is
-    vectorized by connecting its cells along D8 steepest-descent paths;
+    vectorized by connecting its pixels along D8 steepest-descent paths;
     a D8 tree can only converge, so the vector lines cannot braid and
-    off-tree mask cells drop out - treat the GeoJSON as a line
+    off-tree mask pixels drop out - treat the GeoJSON as a line
     approximation and the CSV as the measurement.
 
     The DEM is assumed hydrologically conditioned by the fill/carve
@@ -116,12 +116,12 @@ METHOD
 THE FOUR ALGORITHMS (precise definitions, and credit where due)
 
   D8 - "deterministic eight-neighbour", O'Callaghan and Mark (1984)
-    Each cell discharges ALL of its flow to exactly one of its eight
+    Each pixel discharges ALL of its flow to exactly one of its eight
     neighbours (4 cardinal, 4 diagonal): the one with the steepest
-    downward drop rate (z_cell - z_neighbour) / d, where d is the cell
-    size towards cardinal neighbours and cell size * sqrt(2) towards
-    diagonal ones. The result is a spanning tree of one-cell-wide flow
-    paths; contributing area grows in whole-cell steps. Convergent,
+    downward drop rate (z_pixel - z_neighbour) / d, where d is the pixel
+    size towards cardinal neighbours and pixel size * sqrt(2) towards
+    diagonal ones. The result is a spanning tree of one-pixel-wide flow
+    paths; contributing area grows in whole-pixel steps. Convergent,
     simple and fast, but it cannot represent divergent flow and imprints
     45-degree artefacts on hillslopes.
       Founder: O'Callaghan, J.F. and Mark, D.M. (1984) 'The extraction of
@@ -129,17 +129,17 @@ THE FOUR ALGORITHMS (precise definitions, and credit where due)
       Graphics, and Image Processing, 28(3), pp. 323-344.
 
   MFD - "multiple flow direction", Quinn et al. (1991)
-    Flow from a cell is divided among ALL lower neighbours at once.
+    Flow from a pixel is divided among ALL lower neighbours at once.
     Each downslope neighbour i receives the fraction
 
         f_i = tan(beta_i)^p / sum_j tan(beta_j)^p
 
-    of the cell's flow, where beta_i is the downward slope towards
+    of the pixel's flow, where beta_i is the downward slope towards
     neighbour i and j runs over every downslope neighbour (pysheds uses
     the original slope-proportional weighting; Freeman (1991) proposed
     p = 1.1). Dispersing flow over all descending directions represents
     divergent hillslope flow realistically at the cost of smearing flow
-    paths, so accumulation is fractional rather than whole-cell.
+    paths, so accumulation is fractional rather than whole-pixel.
       Founder: Quinn, P., Beven, K., Chevallier, P. and Planchon, O. (1991)
       'The prediction of hillslope flow paths for distributed hydrological
       modelling using digital terrain models', Hydrological Processes,
@@ -150,19 +150,19 @@ THE FOUR ALGORITHMS (precise definitions, and credit where due)
   Dinf - "D-infinity", Tarboton (1997)
     The flow direction is a CONTINUOUS angle in [0, 2*pi), taken as the
     steepest downward slope over the eight planar triangular facets
-    formed between the cell centre and each pair of adjacent neighbours.
+    formed between the pixel centre and each pair of adjacent neighbours.
     Flow is then apportioned to the two grid neighbours bracketing that
     angle, proportionally to how close the angle lies to each; an angle
     aligned exactly with a neighbour sends everything to that single
-    cell. This avoids D8's directional artefacts while keeping
-    dispersion bounded (at most two receivers per cell).
+    pixel. This avoids D8's directional artefacts while keeping
+    dispersion bounded (at most two receivers per pixel).
       Founder: Tarboton, D.G. (1997) 'A new method for the determination
       of flow directions and upslope areas in grid digital elevation
       models', Water Resources Research, 33(2), pp. 309-319.
 
   MDinf - "multiple direction D-infinity", Seibert and McGlynn (2007)
     A marriage of Dinf and MFD. Like Tarboton's Dinf, the terrain around
-    each cell is modelled as eight planar triangular facets, each with a
+    each pixel is modelled as eight planar triangular facets, each with a
     continuous aspect angle; but instead of following only the single
     steepest facet, flow is dispersed over ALL downslope facets. Each
     downslope facet receives a share proportional to its slope raised to
@@ -226,7 +226,7 @@ ALGORITHMS = {
         "title": "Dinf",
         "routing": "dinf",
         "founder": "Tarboton (1997)",
-        "one_liner": "continuous facet angle, flow split between the two bracketing cells",
+        "one_liner": "continuous facet angle, flow split between the two bracketing pixels",
     },
     "mdinf": {
         "title": "MDinf",
@@ -242,7 +242,7 @@ def build_mosaic(paths, work_dir, nodata=-9999.0):
 
     Always materialized, even for a single tile: routing reads the whole
     surface into memory anyway, and one plain copy normalizes nodata and
-    non-finite cells for everything downstream. Written in float64 so the
+    non-finite pixels for everything downstream. Written in float64 so the
     conditioned tiles' sub-millimetre flat-resolution gradients survive
     the merge (float32 would collapse them back into ties).
     """
@@ -293,9 +293,9 @@ def line_length_m(coords, sx, sy):
 def check_drainage(mosaic_path):
     """Verify the mosaic drains; conditioning is the filling step's job.
 
-    Counts interior cells with no strictly lower neighbour - a pit or a
+    Counts interior pixels with no strictly lower neighbour - a pit or a
     flat tie, where every flow-routing algorithm stops. Nodata counts as
-    an outlet and edge cells drain off-grid, so a properly conditioned
+    an outlet and edge pixels drain off-grid, so a properly conditioned
     DEM leaves only a scattered handful (outlets), well under 0.1 %.
     Orders of magnitude more means the conditioning did not survive into
     the files - classically a filled DEM saved as float32, which
@@ -323,7 +323,7 @@ def check_drainage(mosaic_path):
     n_valid = int(valid.sum())
     if stuck > max(1, n_valid // 1000):
         sys.exit(
-            f"The DEM does not drain: {stuck} of {n_valid} cells "
+            f"The DEM does not drain: {stuck} of {n_valid} pixels "
             f"({100.0 * stuck / n_valid:.1f} %) are pits or flat ties with no "
             f"lower neighbour, so flow accumulation dies before any stream "
             f"reaches the threshold. Re-run the filling step (02_fill_dem.py: "
@@ -331,20 +331,20 @@ def check_drainage(mosaic_path):
             f"collapses the flat-fix gradients) and route its data/02_filled "
             f"output."
         )
-    print(f"         drains: {n_valid - stuck} of {n_valid} valid cells "
-          f"({stuck} outlet/tie cells)")
+    print(f"         drains: {n_valid - stuck} of {n_valid} valid pixels "
+          f"({stuck} outlet/tie pixels)")
 
 
 def mdinf_accumulation(fractions):
-    """MDinf contributing area (in cells) from the direction fractions.
+    """MDinf contributing area (in pixels) from the direction fractions.
 
     pysheds has no MDinf, so the fractions computed by mdinf.py are
     accumulated with the shared Kahn kernel in accumulation.py - the
     same code 04_flow_accumulation.py runs on the written raster, so the
     network thresholded here and the accumulation raster written there
     can never disagree. The NaN-band convention is converted exactly
-    like stage 4's reader: a cell is nodata only when all 8 bands are
-    NaN, and such cells accumulate 0 so they can never reach the
+    like stage 4's reader: a pixel is nodata only when all 8 bands are
+    NaN, and such pixels accumulate 0 so they can never reach the
     threshold.
     """
     frac = np.moveaxis(np.asarray(fractions), 0, -1).astype(np.float32)
@@ -353,7 +353,7 @@ def mdinf_accumulation(fractions):
     np.clip(frac, 0.0, None, out=frac)
     acc, unresolved = accumulate(frac, valid, 1.0, DROW, DCOL)
     if unresolved:
-        print(f"      note: {unresolved} cells sit in a flow cycle and "
+        print(f"      note: {unresolved} pixels sit in a flow cycle and "
               f"keep partial accumulation.")
     return acc
 
@@ -365,13 +365,13 @@ def as_grid_raster(values, template):
     return raster
 
 
-def build_network(grid, fdir_d8, accumulation, threshold_cells, sx, sy):
-    """Threshold accumulation into stream cells, vectorize along D8 paths.
+def build_network(grid, fdir_d8, accumulation, threshold_pixels, sx, sy):
+    """Threshold accumulation into stream pixels, vectorize along D8 paths.
 
     The mask is taken exactly as the algorithm's own accumulation gives it,
     with no cleaning or pruning - the differences between the masks are the
-    whole point. Connecting the cells into LINES follows D8 steepest-descent
-    links, and a D8 tree can only converge: braided reaches and mask cells
+    whole point. Connecting the pixels into LINES follows D8 steepest-descent
+    links, and a D8 tree can only converge: braided reaches and mask pixels
     lying off the D8 tree cannot be drawn as lines. The GeoJSON is therefore
     a D8-path approximation of the dispersive networks; the returned mask is
     the algorithm's true footprint and is what the summary CSV measures.
@@ -379,14 +379,14 @@ def build_network(grid, fdir_d8, accumulation, threshold_cells, sx, sy):
     Returns (segments, stream_mask): segments are dicts with native-CRS
     coordinates and length in metres; stream_mask is a boolean grid.
     """
-    stream_mask = accumulation >= threshold_cells
+    stream_mask = accumulation >= threshold_pixels
     if not np.any(stream_mask):
         return [], np.asarray(stream_mask, dtype=bool)
     network = grid.extract_river_network(fdir_d8, stream_mask)
     segments = []
     for feature in network["features"]:
         coords = feature["geometry"]["coordinates"]
-        if len(coords) < 2:  # an isolated cell cannot form a line
+        if len(coords) < 2:  # an isolated pixel cannot form a line
             continue
         segments.append(
             {
@@ -427,7 +427,7 @@ def write_fdir_raster(path, key, spec, fdir, crs, transform,
         nodata = float("nan")
         descriptions = [f"{spec['title']} flow fraction to {d}"
                         for d in directions]
-        encoding = ("band b = fraction of the cell's flow sent to its "
+        encoding = ("band b = fraction of the pixel's flow sent to its "
                     f"{'/'.join(directions)} neighbour; NaN = nodata")
         if key == "mdinf":
             encoding += (f"; dispersed over downslope triangular facets with "
@@ -502,12 +502,12 @@ def write_geojson(path, segments, spec, transformer, dem_name, min_area_km2):
 
 
 def summary_rows(masks, networks, stats, area_m2, valid_km2, min_area_km2,
-                 threshold_cells, dem_name):
+                 threshold_pixels, dem_name):
     """One comparison row per algorithm for the summary CSV.
 
-    unique_cells are stream cells no other algorithm claims - for the
+    unique_pixels are stream pixels no other algorithm claims - for the
     dispersive methods that is their braided, anastomosing footprint.
-    overlap_jaccard_* is intersection/union of the stream-cell masks, so
+    overlap_jaccard_* is intersection/union of the stream-pixel masks, so
     1.0 means two networks are identical and small values mean they took
     different courses.
     """
@@ -518,7 +518,7 @@ def summary_rows(masks, networks, stats, area_m2, valid_km2, min_area_km2,
         for other in masks:
             if other != key:
                 others |= masks[other]
-        n_cells = int(masks[key].sum())
+        n_pixels = int(masks[key].sum())
         unique = int(np.count_nonzero(masks[key] & ~others))
         lengths_m = [seg["length_m"] for seg in networks[key]]
         total_km = sum(lengths_m) / 1000.0
@@ -526,10 +526,10 @@ def summary_rows(masks, networks, stats, area_m2, valid_km2, min_area_km2,
             "algorithm": spec["title"],
             "founder": spec["founder"],
             "method": spec["one_liner"],
-            "stream_cells": n_cells,
-            "stream_area_km2": round(n_cells * area_m2 / 1e6, 3),
-            "unique_cells": unique,
-            "unique_cells_pct": round(100.0 * unique / max(1, n_cells), 1),
+            "stream_pixels": n_pixels,
+            "stream_area_km2": round(n_pixels * area_m2 / 1e6, 3),
+            "unique_pixels": unique,
+            "unique_pixels_pct": round(100.0 * unique / max(1, n_pixels), 1),
             "segments": len(networks[key]),
             "total_length_km": round(total_km, 1),
             "longest_segment_km": round(max(lengths_m, default=0.0) / 1000.0, 2),
@@ -545,7 +545,7 @@ def summary_rows(masks, networks, stats, area_m2, valid_km2, min_area_km2,
         row.update(
             runtime_s=stats[key]["runtime_s"],
             min_area_km2=min_area_km2,
-            threshold_cells=threshold_cells,
+            threshold_pixels=threshold_pixels,
             dem=dem_name,
         )
         rows.append(row)
@@ -631,13 +631,13 @@ def main(argv=None):
     crs_label = f"EPSG:{epsg}" if epsg else crs.to_string()
     dem_name = (dem_paths[0].name if len(dem_paths) == 1
                 else f"mosaic of {len(dem_paths)} tiles")
-    print(f"         mosaic {n_cols} x {n_rows} cells, "
+    print(f"         mosaic {n_cols} x {n_rows} pixels, "
           f"{res[0]:g} x {res[1]:g} map units, {crs_label}, "
-          f"cell = {area_m2:g} m2")
+          f"pixel = {area_m2:g} m2")
 
-    threshold_cells = max(1, int(round(min_area_km2 * 1e6 / area_m2)))
+    threshold_pixels = max(1, int(round(min_area_km2 * 1e6 / area_m2)))
     print(f"Streams  contributing area >= {min_area_km2:g} km2 "
-          f"= {threshold_cells} cells\n")
+          f"= {threshold_pixels} pixels\n")
 
     # --------------------------------------- 3. drainage check, D8 tree
     check_drainage(mosaic_path)
@@ -668,10 +668,10 @@ def main(argv=None):
                               provenance)
         )
         segments, mask = build_network(grid, fdir_d8, accumulation,
-                                       threshold_cells, sx, sy)
+                                       threshold_pixels, sx, sy)
         networks[key] = segments
         masks[key] = mask
-        n_cells = int(mask.sum())
+        n_pixels = int(mask.sum())
         acc_max = float(np.nanmax(np.asarray(accumulation, dtype="float64")))
         stats[key] = {
             "max_catchment_km2": round(acc_max * area_m2 / 1e6, 2),
@@ -684,7 +684,7 @@ def main(argv=None):
         )
 
         total_km = sum(s["length_m"] for s in segments) / 1000.0
-        print(f"      {n_cells} stream cells -> {len(segments)} segments, "
+        print(f"      {n_pixels} stream pixels -> {len(segments)} segments, "
               f"{total_km:.1f} km [{time.perf_counter() - step:.1f} s]\n")
 
     # --------------------------------------------- 5. the comparison table
@@ -692,7 +692,7 @@ def main(argv=None):
     valid_km2 = (np.count_nonzero(np.asarray(conditioned) != nodata)
                  * area_m2 / 1e6)
     rows = summary_rows(masks, networks, stats, area_m2, valid_km2,
-                        min_area_km2, threshold_cells, dem_name)
+                        min_area_km2, threshold_pixels, dem_name)
     written.append(write_csv(out_dir / "flow_networks_summary.csv", rows))
 
     if not args.keep_work:

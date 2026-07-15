@@ -17,8 +17,8 @@ break downstream flow routing:
 
   1. fill pits and depressions    (pysheds ``fill_depressions``, the
                                    priority-flood of Barnes, Lehman and
-                                   Mulla (2014a); a single-cell pit is just
-                                   a one-cell depression, so one pass
+                                   Mulla (2014a); a single-pixel pit is just
+                                   a one-pixel depression, so one pass
                                    removes both)
   2. resolve flats                (pysheds ``resolve_flats``, the flat-
                                    resolution method of Barnes, Lehman and
@@ -34,7 +34,7 @@ mosaic is then cropped back onto each input's exact grid and written as
 ``data/02_filled/filled_<name>.tif`` -- the same DEMs, but filled.
 
 The outputs are float64 on purpose. Source elevations are quantized to
-the centimetre, so flat terrain is full of exactly tied cells; the
+the centimetre, so flat terrain is full of exactly tied pixels; the
 flat-resolution gradient that makes those ties drain is far smaller than
 float32 can represent at these elevations, and a float32 output silently
 collapses the flats right back -- downstream flow routing then dies on a
@@ -45,11 +45,11 @@ Notes:
   * Depression removal is fill-only (no breaching), by design.
   * Depressions draining across the mosaic's outer edge fill to the edge
     elevation ("outlets at edge"). Only the outer rim of the data acts as
-    an outlet: the priority flood is seeded from the outermost valid cell
+    an outlet: the priority flood is seeded from the outermost valid pixel
     of each row and column, so a depression that drains only into an
     interior nodata hole fills up to the hole's surrounding rim.
-  * Cells that are nodata in an input stay nodata in its output.
-  * All inputs must share CRS, cell size and grid alignment (validated).
+  * Pixels that are nodata in an input stay nodata in its output.
+  * All inputs must share CRS, pixel size and grid alignment (validated).
 
 References:
   * Barnes, R., Lehman, C. and Mulla, D. (2014a) 'Priority-flood: an
@@ -88,14 +88,14 @@ logger = logging.getLogger("fill_dem")
 NODATA = -9999.0             # KM2 convention; also stamped on the outputs
 KEEP_INTERMEDIATE = False    # keep outputs/_work/ after a successful run
 
-# Flat-resolution parameters (pysheds resolve_flats). Each flat cell is
+# Flat-resolution parameters (pysheds resolve_flats). Each flat pixel is
 # raised by FLAT_EPS times its Barnes drainage-gradient count, which grows
 # up to ~3 * FLAT_MAX_ITER steps. The values are chosen so even the widest
 # resolvable flat inflates by at most 3 mm -- well under the source DEM's
 # 1 cm quantization -- while each single step (1e-8 m) stays orders of
 # magnitude above float64 resolution at Finnish elevations (~1e-13 m at
-# 100 m). FLAT_MAX_ITER must exceed the widest flat in cells; 100 000
-# cells = 200 km at 2 m, far beyond any filled lake here. (The pysheds
+# 100 m). FLAT_MAX_ITER must exceed the widest flat in pixels; 100 000
+# pixels = 200 km at 2 m, far beyond any filled lake here. (The pysheds
 # defaults, eps=1e-5 and max_iter=1000, would inflate big flats by metres
 # and leave flats wider than 2 km unresolved.)
 FLAT_EPS = 1e-8
@@ -169,7 +169,7 @@ def build_vrt(
 # Input validation
 # --------------------------------------------------------------------------- #
 def validate_inputs(dems: Sequence[Path]) -> None:
-    """Require one shared CRS, cell size and grid lattice across ``dems``.
+    """Require one shared CRS, pixel size and grid lattice across ``dems``.
 
     Filling runs on a mosaic of all inputs, so a tile on a shifted grid or in
     another CRS would be silently resampled by the VRT -- fail instead. Also
@@ -187,14 +187,14 @@ def validate_inputs(dems: Sequence[Path]) -> None:
             raise ValueError(f"{name}: CRS {crs} != {crs0} ({name0})")
         if (abs(t.a), abs(t.e)) != res:
             raise ValueError(
-                f"{name}: cell size {(abs(t.a), abs(t.e))} != {res} ({name0})"
+                f"{name}: pixel size {(abs(t.a), abs(t.e))} != {res} ({name0})"
             )
         dx = (t.c - t0.c) / t.a
         dy = (t.f - t0.f) / t.e
         if abs(dx - round(dx)) > 1e-6 or abs(dy - round(dy)) > 1e-6:
             raise ValueError(
                 f"{name}: grid origin misaligned with {name0} by "
-                f"({dx % 1:.6f}, {dy % 1:.6f}) cells"
+                f"({dx % 1:.6f}, {dy % 1:.6f}) pixels"
             )
 
     for i, (name_a, _, _, ba) in enumerate(infos):
@@ -216,7 +216,7 @@ def materialize_mosaic(vrt_path: Path, out_tif: Path,
 
     Filling is a global operation over one in-memory surface anyway, so
     reading the mosaic once here costs nothing extra and normalizes the
-    nodata value and any non-finite cells before the fill sees them.
+    nodata value and any non-finite pixels before the fill sees them.
     """
     with rasterio.open(vrt_path) as src:
         dem = src.read(1).astype("float64")
@@ -224,7 +224,7 @@ def materialize_mosaic(vrt_path: Path, out_tif: Path,
             dem[dem == src.nodata] = nodata
         dem[~np.isfinite(dem)] = nodata
         logger.info(
-            "Mosaic grid: %d x %d cells @ %g m, bounds %s",
+            "Mosaic grid: %d x %d pixels @ %g m, bounds %s",
             src.width, src.height, src.transform.a, tuple(src.bounds),
         )
         return write_dem(
@@ -236,12 +236,12 @@ def materialize_mosaic(vrt_path: Path, out_tif: Path,
 # The fill (pysheds)
 # --------------------------------------------------------------------------- #
 def count_undrainable(dem_tif: Path, nodata: float = NODATA) -> tuple[int, int]:
-    """Count interior cells with no strictly lower neighbour.
+    """Count interior pixels with no strictly lower neighbour.
 
-    Such a cell (a pit or a flat tie) stops every flow-routing algorithm.
-    Nodata cells count as outlets (like the fill treats them) and edge
-    cells drain off-grid, so a healthy conditioned DEM leaves only a
-    scattered handful. Returns (undrainable_cells, valid_cells).
+    Such a pixel (a pit or a flat tie) stops every flow-routing algorithm.
+    Nodata pixels count as outlets (like the fill treats them) and edge
+    pixels drain off-grid, so a healthy conditioned DEM leaves only a
+    scattered handful. Returns (undrainable_pixels, valid_pixels).
     """
     with rasterio.open(dem_tif) as src:
         z = src.read(1).astype("float64")
@@ -266,7 +266,7 @@ def fill(mosaic_tif: Path, work_dir: Path = WORK_DIR) -> Path:
     """Fill pits + depressions and resolve flats; return the filled mosaic.
 
     ``fill_depressions`` is a priority-flood fill (Barnes, Lehman and
-    Mulla, 2014a) that removes single-cell pits along with larger
+    Mulla, 2014a) that removes single-pixel pits along with larger
     depressions; ``resolve_flats`` (Barnes, Lehman and Mulla, 2014b)
     applies a tiny gradient (``FLAT_EPS`` per step, at most
     ``FLAT_MAX_ITER`` steps) across flats so the result drains
@@ -304,13 +304,13 @@ def fill(mosaic_tif: Path, work_dir: Path = WORK_DIR) -> Path:
                   dtype="float64")
 
     stuck, valid = count_undrainable(filled_tif)
-    logger.info("Drainage check: %d of %d valid cells undrainable", stuck, valid)
+    logger.info("Drainage check: %d of %d valid pixels undrainable", stuck, valid)
     if stuck > max(1, valid // 1000):
         raise RuntimeError(
-            f"Filled mosaic does not drain: {stuck} of {valid} cells have no "
+            f"Filled mosaic does not drain: {stuck} of {valid} pixels have no "
             f"lower neighbour. The flat-resolution gradients were lost - "
             f"check that every step keeps the DEM in float64, and that "
-            f"FLAT_MAX_ITER exceeds the widest flat in cells."
+            f"FLAT_MAX_ITER exceeds the widest flat in pixels."
         )
     return filled_tif
 
@@ -402,11 +402,11 @@ def crop_back(
     diff = filled[valid] - orig[valid]
     if diff.size and diff.min() < -1e-3:
         raise RuntimeError(
-            f"{dem_path.name}: fill lowered cells by up to {-diff.min():.3f} m"
+            f"{dem_path.name}: fill lowered pixels by up to {-diff.min():.3f} m"
         )
     raised = int(np.count_nonzero(diff > 0))
     logger.info(
-        "%s: %d of %d valid cells raised (%.2f %%), max fill depth %.3f m",
+        "%s: %d of %d valid pixels raised (%.2f %%), max fill depth %.3f m",
         dem_path.name, raised, int(valid.sum()),
         100.0 * raised / max(1, valid.sum()), float(diff.max()) if diff.size else 0.0,
     )

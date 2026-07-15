@@ -12,9 +12,9 @@ Pipeline stage 6, optional (see README.md):
     writes  data/06_floodplains/floodplains.tif
 
 GFPLAIN (Nardi et al., 2019) delineates the geomorphic floodplain from
-terrain alone: every stream cell carries a flood level ``h = a * A**b``
-(h in metres, A = upstream area in km2) and a hillslope cell belongs to the
-floodplain if it rises no more than ``h`` above the stream cell it drains
+terrain alone: every stream pixel carries a flood level ``h = a * A**b``
+(h in metres, A = upstream area in km2) and a hillslope pixel belongs to the
+floodplain if it rises no more than ``h`` above the stream pixel it drains
 to. Both ``a`` and ``b`` are adjustable, to be calibrated against
 observed/modelled flood extents - the literature exponent b ~ 0.30 (Nardi
 et al., 2019) is usually fixed first, then ``a`` fitted.
@@ -22,7 +22,7 @@ et al., 2019) is usually fixed first, then ``a`` fitted.
 This stage recomputes nothing the pipeline already produced - the filled
 DEM, the D8 flow directions and the D8 flow accumulation are read as-is;
 pyflwdir is used only to turn the existing D8 raster into a flow graph (one
-downstream index per cell plus a down-to-upstream cell ordering).
+downstream index per pixel plus a down-to-upstream pixel ordering).
 
 How it works
 ------------
@@ -33,13 +33,13 @@ How it works
    (identical ESRI direction codes; -1 flat / -2 pit -> 0 = pit,
    0 nodata -> 247) and loaded with ``pyflwdir.from_array(ftype="d8")``.
 3. The stage-4 D8 flow accumulation, converted to km2, gives the upstream
-   area A: stream cells (A >= ``upa-min``) are floodplain by definition and
-   carry ``h = a * A**b``; walking from down- to upstream, a hillslope cell
-   joins the floodplain of the stream cell it drains to if its elevation
+   area A: stream pixels (A >= ``upa-min``) are floodplain by definition and
+   carry ``h = a * A**b``; walking from down- to upstream, a hillslope pixel
+   joins the floodplain of the stream pixel it drains to if its elevation
    rises no more than that h above it.
 
 The kernel is adapted from :func:`pyflwdir.dem.floodplains` (plain,
-uncompiled Python in pyflwdir <= 0.5.11, far too slow for a 36M-cell grid),
+uncompiled Python in pyflwdir <= 0.5.11, far too slow for a 36M-pixel grid),
 extended with the explicit coefficient ``a`` (pyflwdir's built-in is the
 ``a = 1`` special case).
 
@@ -50,7 +50,7 @@ Output
 
 Spatial reference
 -----------------
-* Horizontal: EPSG:3067 (ETRS89 / TM35FIN), units metres, 2 m cells.
+* Horizontal: EPSG:3067 (ETRS89 / TM35FIN), units metres, 2 m pixels.
 * Vertical datum of the source elevation data: N2000, units metres.
 
 Credits
@@ -90,7 +90,7 @@ D8_RASTER = "data/03_flows/flow_direction_d8.tif"
                         # D8 flow directions (03_flow_router.py output)
 UPAREA_RASTER = "data/04_accumulation/flow_accumulation_d8.tif"
                         # D8 flow accumulation (04_flow_accumulation.py
-                        # output); its m2/cells units tag is honoured
+                        # output); its m2/pixels units tag is honoured
 
 # The stream-initiation threshold (--upa-min default) is the shared
 # UPA_MIN constant in pipeline_io.py, common to stages 3, 5 and 6.
@@ -139,12 +139,12 @@ GFPLAIN_CITATION = (
 
 @njit(cache=True)
 def _gfplain_kernel(idxs_ds, seq, elevtn, uparea, upa_min, a, b):
-    """GFPLAIN floodplain flag per cell: 1 floodplain, 0 upland, -1 nodata.
+    """GFPLAIN floodplain flag per pixel: 1 floodplain, 0 upland, -1 nodata.
 
     Adapted from :func:`pyflwdir.dem.floodplains` (Nardi et al., 2019)
-    extended with the coefficient ``a``: a stream cell (``uparea >= upa_min``)
-    carries the flood level ``h = a * A**b``; a non-stream cell belongs to the
-    floodplain if it rises no more than ``h`` above the stream cell it drains
+    extended with the coefficient ``a``: a stream pixel (``uparea >= upa_min``)
+    carries the flood level ``h = a * A**b``; a non-stream pixel belongs to the
+    floodplain if it rises no more than ``h`` above the stream pixel it drains
     to (pyflwdir's built-in is the ``a = 1`` special case).
     """
     drainh = np.full(uparea.size, -9999.0, dtype=np.float32)
@@ -203,8 +203,8 @@ def main(argv=None) -> int:
                     help="D8 flow-accumulation raster "
                          "(04_flow_accumulation.py output)")
     ap.add_argument("--upa-min", type=float, default=UPA_MIN, metavar="KM2",
-                    help="stream-initiation threshold: cells with at least "
-                         "this upstream area are stream cells "
+                    help="stream-initiation threshold: pixels with at least "
+                         "this upstream area are stream pixels "
                          f"(default {UPA_MIN:g})")
     ap.add_argument("--a", type=float, default=GFPLAIN_A,
                     help=f"GFPLAIN coefficient a in h = a*A**b (default "
@@ -225,8 +225,8 @@ def main(argv=None) -> int:
 
     elevtn, transform, crs = build_mosaic(dem_paths)
     shape = elevtn.shape
-    print(f"mosaic {shape[1]} x {shape[0]} cells, "
-          f"cell {abs(transform.a)} x {abs(transform.e)} m")
+    print(f"mosaic {shape[1]} x {shape[0]} pixels, "
+          f"pixel {abs(transform.a)} x {abs(transform.e)} m")
 
     d8u8, routing_alg = load_d8(args.d8, transform, shape, crs)
     flw = build_flwdir(d8u8, transform)
@@ -234,10 +234,10 @@ def main(argv=None) -> int:
 
     uparea = load_uparea(args.uparea, transform, shape, crs, routing_alg)
     n_stream = int((uparea >= np.float32(args.upa_min)).sum())
-    print(f"stream cells: {n_stream} (upstream area >= {args.upa_min:g} km2, "
+    print(f"stream pixels: {n_stream} (upstream area >= {args.upa_min:g} km2, "
           f"max {float(uparea.max()):.2f} km2)")
     if n_stream == 0:
-        sys.exit(f"no cell reaches --upa-min {args.upa_min:g} km2; "
+        sys.exit(f"no pixel reaches --upa-min {args.upa_min:g} km2; "
                  f"no stream to grow a floodplain from")
 
     fldpln = compute_floodplains(
@@ -251,9 +251,9 @@ def main(argv=None) -> int:
         nodata=FP_NODATA, dtype="int8",
         tags=dict(
             title="Geomorphic floodplains (GFPLAIN)",
-            algorithm="GFPLAIN: stream cells carry the flood level "
+            algorithm="GFPLAIN: stream pixels carry the flood level "
                       "h = a * A**b (h in m, A = upstream area in km2); a "
-                      "cell joins the floodplain of the stream cell it "
+                      "pixel joins the floodplain of the stream pixel it "
                       "drains to (D8) if it rises no more than h above it",
             citation=GFPLAIN_CITATION,
             parameters=f"a={args.a:g}, b={args.b:g}, "
@@ -278,8 +278,8 @@ def main(argv=None) -> int:
     )
 
     n_fp = int((fldpln == 1).sum())
-    cell_km2 = abs(transform.a * transform.e) / 1e6
-    print(f"floodplain: {n_fp} cells = {n_fp * cell_km2:.2f} km2 "
+    pixel_km2 = abs(transform.a * transform.e) / 1e6
+    print(f"floodplain: {n_fp} pixels = {n_fp * pixel_km2:.2f} km2 "
           f"(a={args.a:g}, b={args.b:g}, upa_min={args.upa_min:g} km2)")
     print(f"-> {out_path}  ({time.perf_counter() - t0:.1f} s)")
     return 0

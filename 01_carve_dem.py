@@ -15,7 +15,7 @@ which is the default input of the next stage (02_fill_dem.py).
 For every GeoTIFF DEM in the input folder, downloads the matching window
 of the SYKE "Tierumpujen uomakorjaus" correction raster (windowed WCS, never
 the whole country), aligns it onto the DEM's exact grid, and applies a
-cell-wise minimum ("carve"): ``min(DEM, culvert)`` where the culvert layer
+pixel-wise minimum ("carve"): ``min(DEM, culvert)`` where the culvert layer
 has data, DEM elsewhere. The carved DEM lowers elevations at culverts and
 pipe crossings so flow routes through road embankments instead of being
 falsely dammed.
@@ -59,7 +59,7 @@ logger = logging.getLogger("carve_dem")
 # Defaults / constants
 # --------------------------------------------------------------------------- #
 TARGET_CRS = 3067            # EPSG:3067 ETRS89 / TM35FIN
-RES = 2.0                    # native cell size (m), shared by KM2 and culvert
+RES = 2.0                    # native pixel size (m), shared by KM2 and culvert
 NODATA = -9999.0             # KM2 and culvert both use this
 
 # SYKE culvert-correction WCS -- windowed GetCoverage only
@@ -249,7 +249,7 @@ def align_to_reference(
     KM2 and the culvert layer share a 2 m lattice, so nearest-neighbour is
     an exact copy; doing it explicitly guarantees an identical
     shape/transform even if the WCS server snaps the window differently,
-    eliminating any half-cell offset before the cell-wise minimum. Source
+    eliminating any half-pixel offset before the pixel-wise minimum. Source
     nodata becomes ``nodata``.
     """
     dst = np.full(ref_shape, nodata, dtype="float32")
@@ -269,7 +269,7 @@ def align_to_reference(
 
 
 # --------------------------------------------------------------------------- #
-# Cell-wise minimum (the carve)
+# Pixel-wise minimum (the carve)
 # --------------------------------------------------------------------------- #
 def carved_minimum(
     dem: np.ndarray, culvert: np.ndarray, nodata: float = NODATA
@@ -279,7 +279,7 @@ def carved_minimum(
     Strict nodata handling: the culvert layer is mostly nodata and only carries
     real (lowered) elevations at crossings. nodata must NOT be read as a low
     number that wins the minimum -- so the minimum is taken only where *both*
-    layers are valid. Cells with no culvert value keep the DEM; cells where the
+    layers are valid. Pixels with no culvert value keep the DEM; pixels where the
     DEM is nodata stay nodata.
 
     ``dem`` is modified in place and returned (the arrays cover the whole
@@ -298,7 +298,7 @@ def carved_minimum(
     dem[~dem_valid] = nodata
 
     logger.info(
-        "Carved: %d cells carry a culvert value, %d lowered below the DEM",
+        "Carved: %d pixels carry a culvert value, %d lowered below the DEM",
         int(cul_valid.sum()), lowered,
     )
     return dem
@@ -358,7 +358,7 @@ def carve_dem(
 
     Reads the whole DEM, downloads the culvert correction for the DEM's
     bounds (cached in ``culvert_dir``), aligns it onto the DEM grid, applies
-    the cell-wise minimum, and writes ``out_dir/carved_<name>.tif``.
+    the pixel-wise minimum, and writes ``out_dir/carved_<name>.tif``.
     """
     dem_path = Path(dem_path)
     name = dem_path.stem
@@ -379,7 +379,7 @@ def carve_dem(
     if src_nodata is not None and src_nodata != nodata:
         dem[dem == src_nodata] = nodata
     logger.info(
-        "DEM grid: %d x %d cells @ %g m, bounds %s",
+        "DEM grid: %d x %d pixels @ %g m, bounds %s",
         dem.shape[1], dem.shape[0], transform.a, bounds,
     )
 
@@ -399,7 +399,7 @@ def carve_dem(
         Path(out_dir) / f"carved_{name}.tif", carved, transform, crs, nodata,
         tags=dict(
             title="Culvert-carved DEM",
-            carve_method="cell-wise min(DEM, SYKE 'Tierumpujen uomakorjaus' "
+            carve_method="pixel-wise min(DEM, SYKE 'Tierumpujen uomakorjaus' "
                          "culvert correction) where the culvert layer has "
                          "data; whole DEM, no depression filling",
             dem_source_tiles=dem_path.name,
